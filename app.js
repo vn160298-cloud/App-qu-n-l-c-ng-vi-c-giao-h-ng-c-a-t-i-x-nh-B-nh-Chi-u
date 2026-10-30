@@ -298,6 +298,9 @@ ACT.saveOrder = id => {
   if (oldTrip && oldTrip !== o.tripCode) { const t = byId('trips', oldTrip); if (t) planTrip(t); }
   log(isNew ? 'Tạo đơn' : 'Sửa đơn', o.code, `${o.customerName}${o.driverId ? ' → ' + userName(o.driverId) : ''}`);
   toast(isNew ? `Đã tạo đơn ${o.code}` : 'Đã lưu'); closeModal(); renderView();
+  if (o.tripCode) { const t = byId('trips', o.tripCode), cap = capOfVeh(t.vehicle), load = tripLoad(t); if (capOn() && cap && load > cap) toast(`⚠ Chuyến ${t.code} vượt tải ${num(load)}/${num(cap)} kg`, 5000); }
+  // Đơn mới chưa phân công mà trong ngày đã có chuyến → mở gợi ý ghép tiện đường
+  else if (isNew && can('assign') && insertionOptions(o).length) ACT.openOrder(o.code);
 };
 // Gắn đơn vào 1 tài xế + 1 chuyến (tự tạo chuyến nếu cần)
 function assignOrder(o, driverId, tripCode) {
@@ -347,6 +350,7 @@ ACT.openOrder = id => {
       </ul>
       <div><b>Mốc thời gian check-in</b><ul class="list-mini">${tl}</ul></div>
     </div>
+    ${o.status === 'cho_phan_cong' && can('assign') ? mergeOptionsHTML(o) : ''}
     <div class="mt"><b>Ảnh xác nhận (${(o.photos || []).length})</b>${thumbs(o) || '<div class="small muted">Chưa có ảnh</div>'}</div>
     <div class="row mt">
       ${can('photo') ? `<button class="btn" data-act="addPhoto" data-id="${esc(o.code)}">📷 Thêm ảnh</button>` : ''}
@@ -403,23 +407,52 @@ function vAssign() {
   const drs = f.drs || (f.drs = Object.fromEntries(drivers().map(u => [u.id, true])));
   const start = f.start || S().startTime;
   const plan = STATE.plan;
+  const openTrips = DB.trips.filter(t => t.date === d && !['hoan_thanh', 'huy'].includes(t.status));
   return `
   <div class="sec-title"><h2>Giao việc & chia đều thời gian</h2></div>
-  <div class="hint b">App ước tính thời gian mỗi chuyến = lên hàng (${S().loadMin}′) + di chuyển (${S().speedKmh} km/h) + giao tại điểm + quay về kho, sau đó <b>chia đơn sao cho tổng thời gian của các tài xế gần bằng nhau</b> và <b>sắp xếp cung đường tốt nhất</b> cho từng người (khách hẹn sáng trước – chiều sau, trong mỗi buổi chọn đường ngắn nhất).</div>
+  <div class="hint b">App <b>gom đơn cùng tuyến / tiện đường thành cụm</b> và giao nguyên cụm cho một tài xế. Mỗi chuyến xe chở nhiều đơn, giao lần lượt theo <b>cung đường tốt nhất</b> rồi mới về kho; nếu ${S().useCapacity !== false ? '<b>xe đầy (theo tải trọng)</b>' : 'xe đầy'} thì tách thành chuyến 2, 3… (về kho lấy hàng rồi đi tiếp). Thời gian = lên hàng (${S().loadMin}′) + di chuyển (${S().speedKmh} km/h) + giao tại điểm + về kho; app chia sao cho <b>tổng thời gian cả ngày của các tài xế gần bằng nhau</b>.</div>
+  ${pool.length && openTrips.length ? mergeCard(pool) : ''}
   <div class="filters mt">${dateInput('Ngày xuất phát')}
     <label class="f">Giờ xuất phát dự kiến${selectHTML('start', START_TIMES.map(x => [x, x]), start, { attrs: 'data-chg="f"' })}</label></div>
   <div class="split">
     <div class="card"><div class="row sb"><b>Đơn chờ phân công (${pool.length})</b><span><button class="btn sm" data-act="pickAll" data-id="1">Chọn hết</button> <button class="btn sm" data-act="pickAll" data-id="">Bỏ hết</button></span></div>
-      ${pool.length ? pool.map(o => `<label class="check"><input type="checkbox" data-chg="pick" value="${esc(o.code)}" ${sel[o.code] !== false ? 'checked' : ''}><span><b>${esc(o.code)}</b> · ${esc(o.customerName)} <span class="small muted">· ${esc(o.route || '')} · ${esc(o.timeWindow || '')}${hasXY(o) ? '' : ' · ⚠ thiếu tọa độ'}</span></span></label>`).join('') : '<div class="empty">Không còn đơn chờ phân công trong ngày.</div>'}
+      ${pool.length ? pool.map(o => `<label class="check"><input type="checkbox" data-chg="pick" value="${esc(o.code)}" ${sel[o.code] !== false ? 'checked' : ''}><span><b>${esc(o.code)}</b> · ${esc(o.customerName)} <span class="small muted">· ${esc(o.route || 'chưa có tuyến')} · ${esc(o.timeWindow || '')}${kgOf(o) ? ` · ${num(kgOf(o))} kg` : ''}${hasXY(o) ? '' : ' · ⚠ thiếu tọa độ'}</span></span></label>`).join('') : '<div class="empty">Không còn đơn chờ phân công trong ngày.</div>'}
     </div>
     <div class="card"><b>Tài xế tham gia</b>
-      ${drivers().map(u => { const load = DB.trips.filter(t => t.driverId === u.id && t.date === d && t.status !== 'huy').reduce((s, t) => s + (t.planMin || 0), 0);
-        return `<label class="check"><input type="checkbox" data-chg="drv" value="${u.id}" ${drs[u.id] !== false ? 'checked' : ''}><span>${esc(u.name)} <span class="small muted">· ${esc(u.vehicle || 'chưa gán xe')}${load ? ` · đã có ${durTxt(load)} việc` : ''}</span></span></label>`; }).join('')}
+      ${drivers().map(u => { const load = DB.trips.filter(t => t.driverId === u.id && t.date === d && t.status !== 'huy').reduce((s, t) => s + (t.planMin || 0), 0), cap = capOf(u.id);
+        return `<label class="check"><input type="checkbox" data-chg="drv" value="${u.id}" ${drs[u.id] !== false ? 'checked' : ''}><span>${esc(u.name)} <span class="small muted">· ${esc(u.vehicle || 'chưa gán xe')}${cap ? ` (${num(cap)} kg)` : ''}${load ? ` · đã có ${durTxt(load)} việc` : ''}</span></span></label>`; }).join('')}
       <button class="btn p big mt" data-act="runBalance" ${pool.length ? '' : 'disabled'}>⚖️ Chia đều & tối ưu tuyến</button>
     </div>
   </div>
   ${plan ? planPreview(plan) : ''}`;
 }
+// Đơn phát sinh: gợi ý ghép vào chuyến đã lập / đang chạy tốn thêm ít thời gian nhất
+const optBadges = x => `${x.sameRoute ? ' <span class="bd grn">cùng tuyến</span>' : ''}${x.moving ? ' <span class="bd org">xe đã rời kho</span>' : ''}${x.over ? ` <span class="bd red">vượt tải ${num(x.load)}/${num(x.cap)} kg</span>` : ''}`;
+function mergeCard(pool) {
+  const rows = pool.map(o => ({ o, best: insertionOptions(o)[0] })).filter(r => r.best).sort((a, b) => a.best.add - b.best.add);
+  return `<div class="card mt"><b>🔗 Ghép đơn tiện đường vào chuyến đã lập (${rows.length})</b>
+    <p class="small muted" style="margin:4px 0 8px">Với mỗi đơn chờ, app tìm chuyến trong ngày mà ghép vào tốn thêm ít thời gian nhất (tính từ điểm xe vừa giao, chèn vào chỗ tiện đường nhất).</p>
+    <ul class="list-mini">${rows.map(({ o, best: x }) => `<li><span><b>${esc(o.code)}</b> · ${esc(o.customerName)} <span class="small muted">${esc(o.route || '')}</span><br>
+      <span class="small">Tiện nhất: <b>${esc(x.t.code)}</b> · ${esc(userName(x.t.driverId))} · <b>+${x.add} phút</b> · +${x.km} km${optBadges(x)}</span></span>
+      <span style="white-space:nowrap"><button class="btn sm g" data-act="mergeInto" data-id="${esc(o.code)}|${esc(x.t.code)}">Ghép</button> <button class="btn sm" data-act="openOrder" data-id="${esc(o.code)}">Lựa chọn khác</button></span></li>`).join('')}</ul></div>`;
+}
+function mergeOptionsHTML(o) {
+  const opts = insertionOptions(o).slice(0, 6);
+  if (!opts.length) return '';
+  return `<div class="mt"><b>🔗 Gợi ý ghép tiện đường</b><div class="small muted">Thời gian tăng thêm của chuyến khi ghép đơn này vào (gồm ${svcMin(o)}′ giao tại điểm).</div>
+    <ul class="list-mini">${opts.map(x => `<li><span><b>${esc(x.t.code)}</b> · ${esc(userName(x.t.driverId))} · ${badge(TST, x.t.status)}<br><span class="small"><b>+${x.add} phút</b> · +${x.km} km · tải sau ghép ${num(x.load)}${x.cap ? '/' + num(x.cap) : ''} kg${optBadges(x)}</span></span>
+      <button class="btn sm ${x.over ? '' : 'g'}" data-act="mergeInto" data-id="${esc(o.code)}|${esc(x.t.code)}">Ghép</button></li>`).join('')}</ul></div>`;
+}
+ACT.mergeInto = v => {
+  const [oc, tc] = v.split('|'), o = byId('orders', oc), t = byId('trips', tc);
+  if (!o || !t) return;
+  const x = insertionOptions(o).find(y => y.t.code === tc);
+  if (x?.over && !confirm(`Chuyến ${tc} sẽ vượt tải (${num(x.load)}/${num(x.cap)} kg). Vẫn ghép?`)) return;
+  if (x?.moving && !confirm(`Xe chuyến ${tc} đã rời kho – hàng của đơn này phải có sẵn trên xe hoặc tài xế quay lại lấy. Vẫn ghép?`)) return;
+  assignOrder(o, t.driverId, tc);
+  log('Ghép đơn tiện đường', tc, `${oc} → ${userName(t.driverId)}${x ? ` · +${x.add} phút, +${x.km} km` : ''}`);
+  toast(`Đã ghép ${oc} vào ${tc}${x ? ` (+${x.add} phút)` : ''}`); closeModal(); renderView();
+};
 CHG.pick = el => { STATE.f.pick[el.value] = el.checked; STATE.plan = null; };
 CHG.drv = el => { STATE.f.drs[el.value] = el.checked; STATE.plan = null; };
 ACT.pickAll = v => { Object.keys(STATE.f.pick).forEach(k => STATE.f.pick[k] = !!v); STATE.plan = null; renderView(); };
@@ -437,50 +470,63 @@ function groupStart(g, plan) {
   const prev = DB.trips.filter(t => t.driverId === g.id && t.date === plan.date && t.status !== 'huy').map(t => toMin(t.planEnd) || 0);
   return prev.length ? hhmm(Math.max(toMin(plan.start), Math.max(...prev) + 15)) : plan.start;
 }
+// Các chuyến trong ngày của 1 tài xế: tách theo tải trọng xe, chuyến sau xuất phát khi chuyến trước về kho
+function groupLegs(g, plan) {
+  const os = g.codes.map(c => byId('orders', c)).filter(Boolean), cap = capOfVeh(g.vehicle);
+  let start = groupStart(g, plan);
+  return splitByCapacity(os, cap, false).map(ch => {
+    const sch = scheduleSeq(optimizeRoute(ch), start), leg = { start, sch, load: ch.reduce((s, o) => s + kgOf(o), 0), cap, codes: ch.map(o => o.code) };
+    start = sch.end; return leg;
+  });
+}
 function planPreview(plan) {
   const cards = plan.groups.map(g => {
-    const os = g.codes.map(c => byId('orders', c));
-    const seq = optimizeRoute(os), sch = scheduleSeq(seq, groupStart(g, plan));
-    g._tot = g.base + (os.length ? sch.work : 0);
-    return { g, sch };
+    const legs = groupLegs(g, plan);
+    g._tot = g.base + legs.reduce((s, l) => s + l.sch.work, 0);
+    return { g, legs };
   });
   const tots = cards.map(c => c.g._tot), spread = Math.max(...tots) - Math.min(...tots);
   return `<div id="plan" class="mt2"><div class="sec-title"><h2>Phương án đề xuất</h2><span class="bd ${spread <= 30 ? 'grn' : 'yel'}">Chênh lệch thời gian làm việc giữa các tài xế: ${durTxt(spread)}</span></div>
-    <div class="split">${cards.map(({ g, sch }) => `<div class="card">
+    <div class="split">${cards.map(({ g, legs }) => { const routes = [...new Set(g.codes.map(c => byId('orders', c)?.route).filter(Boolean))];
+      return `<div class="card">
       <div class="row sb"><b>${esc(userName(g.id))}</b><span class="small">Xe ${selectHTML('veh_' + g.id, vehicleOpts(), g.vehicle, { empty: '—', attrs: `data-chg="planVeh" data-id="${g.id}" style="min-height:32px;padding:4px 8px;width:auto"` })}</span></div>
-      <div class="small muted">${g.codes.length} điểm · ~${sch.km} km · xuất phát ${groupStart(g, plan)} → về kho ~${g.codes.length ? sch.end : '—'} · <b>làm việc ${durTxt(g._tot)}</b>${sch.wait ? ` · chờ khung giờ khách ${durTxt(sch.wait)}` : ''}${g.base ? ` (gồm ${durTxt(g.base)} việc đã có)` : ''}</div>
-      <ol style="padding-left:20px;margin:8px 0 0">${sch.rows.map(r => `<li style="margin:4px 0"><b>${r.eta}</b> · ${esc(r.o.customerName)} <span class="small muted">${esc(r.o.timeWindow || '')}${r.late ? ' · <span style="color:var(--bad)">trễ khung giờ</span>' : ''}</span>
-        <select data-chg="planMove" data-id="${esc(r.o.code)}" style="min-height:28px;padding:2px 6px;width:auto;font-size:12px">${plan.groups.map(x => opt(x.id, x.id === g.id ? 'Giữ' : '→ ' + userName(x.id), g.id)).join('')}</select></li>`).join('')}</ol>
-    </div>`).join('')}</div>
-    <div class="row mt"><span class="grow small muted">Có thể chuyển đơn giữa các tài xế bằng ô chọn bên cạnh mỗi điểm, app sẽ tính lại tuyến và thời gian.</span><button class="btn" data-act="runBalance">↻ Tính lại</button><button class="btn p" data-act="commitPlan">✅ Xác nhận tạo chuyến & giao việc</button></div></div>`;
+      <div class="small muted">${g.codes.length} điểm · <b>${legs.length} chuyến</b>${routes.length ? ` · tuyến ${esc(routes.join(', '))}` : ''} · ~${Math.round(legs.reduce((s, l) => s + l.sch.km, 0) * 10) / 10} km · <b>làm việc ${durTxt(g._tot)}</b>${g.base ? ` (gồm ${durTxt(g.base)} việc đã có)` : ''}</div>
+      ${legs.map((l, k) => `<div class="mt" style="border-top:1px dashed var(--line);padding-top:8px"><b>Chuyến ${k + 1}</b> <span class="small">· ${l.start} → về kho ~${l.sch.end} · ${l.codes.length} điểm · ${num(l.load)}${l.cap ? '/' + num(l.cap) : ''} kg${l.cap && capOn() && l.load > l.cap ? ' <span class="bd red">vượt tải (1 đơn quá nặng)</span>' : ''}${l.sch.wait ? ` · chờ khung giờ ${durTxt(l.sch.wait)}` : ''}</span>
+        <ol style="padding-left:20px;margin:6px 0 0">${l.sch.rows.map(r => `<li style="margin:4px 0"><b>${r.eta}</b> · ${esc(r.o.customerName)} <span class="small muted">${esc(r.o.route || '')} · ${esc(r.o.timeWindow || '')}${r.late ? ' · <span style="color:var(--bad)">trễ khung giờ</span>' : ''}</span>
+          <select data-chg="planMove" data-id="${esc(r.o.code)}" style="min-height:28px;padding:2px 6px;width:auto;font-size:12px">${plan.groups.map(x => opt(x.id, x.id === g.id ? 'Giữ' : '→ ' + userName(x.id), g.id)).join('')}</select></li>`).join('')}</ol></div>`).join('') || '<div class="small muted mt">Không có đơn</div>'}
+    </div>`; }).join('')}</div>
+    <div class="row mt"><span class="grow small muted">Có thể chuyển đơn giữa các tài xế hoặc đổi xe; app tự tính lại số chuyến, tuyến và thời gian.</span><button class="btn" data-act="runBalance">↻ Tính lại</button><button class="btn p" data-act="commitPlan">✅ Xác nhận tạo chuyến & giao việc</button></div></div>`;
 }
 CHG.planMove = el => {
   const code = el.dataset.id, to = el.value, p = STATE.plan;
   p.groups.forEach(g => g.codes = g.codes.filter(c => c !== code)); p.groups.find(g => g.id === to).codes.push(code); renderView();
 };
-CHG.planVeh = el => { STATE.plan.groups.find(g => g.id === el.dataset.id).vehicle = el.value; };
+CHG.planVeh = el => { STATE.plan.groups.find(g => g.id === el.dataset.id).vehicle = el.value; renderView(); };
 ACT.commitPlan = () => {
-  const p = STATE.plan; let n = 0;
+  const p = STATE.plan; let n = 0, nt = 0;
   for (const g of p.groups) {
-    if (!g.codes.length) continue;
-    const t = createTrip(p.date, g.id, g.vehicle, groupStart(g, p));
-    g.codes.forEach(c => { const o = byId('orders', c); Object.assign(o, { driverId: g.id, tripCode: t.code, status: 'da_phan_cong', tAssigned: nowISO() }); upsert('orders', o); n++; });
-    planTrip(t);
-    log('Phân công', t.code, `${userName(g.id)} nhận ${g.codes.length} đơn: ${g.codes.join(', ')}`);
+    for (const leg of groupLegs(g, p)) {
+      const t = createTrip(p.date, g.id, g.vehicle, leg.start);
+      leg.codes.forEach(c => { const o = byId('orders', c); Object.assign(o, { driverId: g.id, tripCode: t.code, status: 'da_phan_cong', tAssigned: nowISO() }); upsert('orders', o); n++; });
+      planTrip(t); nt++;
+      log('Phân công', t.code, `${userName(g.id)} nhận ${leg.codes.length} đơn (${num(leg.load)} kg): ${leg.codes.join(', ')}`);
+    }
   }
-  STATE.plan = null; STATE.f = {}; toast(`Đã giao ${n} đơn cho tài xế`); ACT.tab('trips');
+  STATE.plan = null; STATE.f = {}; toast(`Đã giao ${n} đơn thành ${nt} chuyến`); ACT.tab('trips');
 };
 
 /* =====================================================================
    CHUYẾN GIAO
    ===================================================================== */
+// Tải chuyến / tải trọng xe, đỏ khi vượt
+const loadTxt = t => { const l = tripLoad(t), c = capOfVeh(t.vehicle); return `<span style="${capOn() && c && l > c ? 'color:var(--bad);font-weight:700' : ''}">${num(l)}${c ? '/' + num(c) : ''} kg</span>`; };
 function vTrips() {
   const ts = DB.trips.filter(t => t.date === STATE.date && (STATE.f.showCancel === '1' || t.status !== 'huy')).sort((a, b) => a.code.localeCompare(b.code));
   return `<div class="sec-title"><h2>Chuyến giao (${ts.length})</h2><div class="row">${can('trip.edit') ? '<button class="btn p" data-act="newTrip">＋ Tạo chuyến trống</button>' : ''}<button class="btn" data-act="exportTrips">⬇ Xuất Excel</button></div></div>
   <div class="filters">${dateInput('Ngày xuất phát')}<label class="f">Hiển thị${selectHTML('showCancel', [['', 'Ẩn chuyến đã hủy'], ['1', 'Hiện cả chuyến đã hủy']], STATE.f.showCancel, { attrs: 'data-chg="f"' })}</label></div>
   ${ts.length ? ts.map(t => { const os = tripOrders(t), ok = os.filter(o => OK_ST.includes(o.status)).length, fail = os.filter(o => o.status === 'giao_that_bai').length;
     return `<div class="card click" data-act="openTrip" data-id="${esc(t.code)}" style="cursor:pointer">
-      <div class="row sb"><div><b>${esc(t.code)}</b> ${badge(TST, t.status)}<div class="small muted">${esc(userName(t.driverId))} · Xe ${esc(t.vehicle || '—')} · ${os.length} điểm · ~${t.planKm || 0} km · dự kiến ${t.plannedStart}→${t.planEnd || '—'} (${durTxt(t.planMin)})</div></div>
+      <div class="row sb"><div><b>${esc(t.code)}</b> ${badge(TST, t.status)}<div class="small muted">${esc(userName(t.driverId))} · Xe ${esc(t.vehicle || '—')} · ${os.length} điểm · ~${t.planKm || 0} km · dự kiến ${t.plannedStart}→${t.planEnd || '—'} (${durTxt(t.planMin)}) · ${loadTxt(t)}</div></div>
       <div class="small">Lên hàng <b>${fmtHM(t.tLoadStart)}</b> · Đi <b>${fmtHM(t.tDepart)}</b> · Về <b>${fmtHM(t.tReturn)}</b></div></div>
       <div class="bar mt"><i style="width:${os.length ? ok / os.length * 100 : 0}%;background:var(--ok)"></i><i style="width:${os.length ? fail / os.length * 100 : 0}%;background:var(--bad)"></i></div></div>`; }).join('')
     : '<div class="card empty">Chưa có chuyến nào. Vào <b>Giao việc</b> để chia đơn tự động.</div>'}`;
@@ -505,7 +551,7 @@ ACT.openTrip = id => {
   const pool = DB.orders.filter(o => o.date === t.date && o.status === 'cho_phan_cong');
   const links = mapsLinks(os.filter(o => !isDone(o)).length ? os.filter(o => !isDone(o)) : os);
   openModal(`Chuyến ${esc(t.code)}`, `
-    <div class="row sb">${badge(TST, t.status)}<span class="small muted">Ngày ${fmtD(t.date)} · ${os.length} điểm · ~${t.planKm || 0} km · dự kiến ${t.plannedStart} → ${t.planEnd || '—'} (${durTxt(t.planMin)})</span></div>
+    <div class="row sb">${badge(TST, t.status)}<span class="small muted">Ngày ${fmtD(t.date)} · ${os.length} điểm · ~${t.planKm || 0} km · dự kiến ${t.plannedStart} → ${t.planEnd || '—'} (${durTxt(t.planMin)}) · ${loadTxt(t)}</span></div>
     <div class="row mt" id="tf">
       <label class="f">Tài xế${selectHTML('driverId', driverOpts(true), t.driverId, { attrs: ed ? '' : 'disabled' })}</label>
       <label class="f">Xe${selectHTML('vehicle', vehicleOpts(), t.vehicle, { empty: '—', attrs: ed ? '' : 'disabled' })}</label>
@@ -521,7 +567,7 @@ ACT.openTrip = id => {
     <div class="tw"><table><thead><tr><th>TT</th><th>Mã đơn</th><th>Khách hàng</th><th>Khung giờ</th><th>Dự kiến</th><th>Đến điểm</th><th>Giao TC</th><th>Trạng thái</th>${ed ? '<th></th>' : ''}</tr></thead><tbody>
     ${os.map(o => `<tr><td>${o.seq || ''}</td><td><a href="#" data-act="openOrder" data-id="${esc(o.code)}">${esc(o.code)}</a></td><td>${esc(o.customerName)}</td><td>${esc(o.timeWindow || '')}</td><td>${o.eta || ''}</td><td>${fmtHM(o.tArrive)}</td><td>${fmtHM(o.tDelivered)}</td><td>${badge(OST, o.status)}</td>${ed ? `<td>${isDone(o) ? '' : `<button class="btn sm r" data-act="removeFromTrip" data-id="${esc(o.code)}">Gỡ</button>`}</td>` : ''}</tr>`).join('') || '<tr><td colspan="9" class="muted">Chuyến chưa có đơn</td></tr>'}
     </tbody></table></div>
-    ${ed && pool.length ? `<div class="row mt"><label class="f">Thêm đơn chờ phân công vào chuyến${selectHTML('addOrder', pool.map(o => [o.code, `${o.code} – ${o.customerName} · ${o.route || ''} · ${o.timeWindow || ''}`]), '', { empty: '— Chọn đơn —', attrs: 'id="add-o"' })}</label><button class="btn" style="align-self:flex-end" data-act="addToTrip" data-id="${esc(t.code)}">＋ Thêm</button></div>` : ''}
+    ${ed && pool.length ? `<div class="row mt"><label class="f">Thêm đơn chờ phân công vào chuyến${selectHTML('addOrder', pool.map(o => ({ o, x: insertionOptions(o).find(y => y.t.code === t.code) })).sort((a, b) => (a.x?.add ?? 999) - (b.x?.add ?? 999)).map(({ o, x }) => [o.code, `${x ? '+' + x.add + ' phút' : ''} · ${o.code} – ${o.customerName} · ${o.route || ''} · ${o.timeWindow || ''}${x?.over ? ' · VƯỢT TẢI' : ''}`]), '', { empty: '— Chọn đơn (tiện đường nhất ở trên) —', attrs: 'id="add-o"' })}</label><button class="btn" style="align-self:flex-end" data-act="addToTrip" data-id="${esc(t.code)}">＋ Thêm</button></div>` : ''}
     <div class="row mt">
       ${links.map((l, i) => `<a class="btn n" href="${l}" target="_blank" rel="noopener">🗺 Chỉ đường Google Maps${links.length > 1 ? ' – chặng ' + (i + 1) : ''}</a>`).join('')}
       ${ed ? `<button class="btn" data-act="reoptTrip" data-id="${esc(t.code)}">🧭 Tối ưu lại tuyến</button>` : ''}
@@ -568,7 +614,7 @@ function tripCardDriver(t) {
     dang_di_chuyen: allDone ? `<button class="btn g big" data-act="tripStep" data-id="${esc(t.code)}">🏁 Về kho – kết thúc chuyến</button>` : '',
   }[t.status] || '';
   return `<div class="card mt">
-    <div class="row sb"><div><b>Chuyến ${esc(t.code)}</b> ${badge(TST, t.status)}<div class="small muted">${t.date !== STATE.date ? `<b style="color:var(--bad)">Ngày ${fmtD(t.date)}</b> · ` : ''}Xe ${esc(t.vehicle || '—')} · Xuất phát DK ${t.plannedStart} · ${os.length} điểm · ~${t.planKm || 0} km · về DK ${t.planEnd || '—'}</div></div></div>
+    <div class="row sb"><div><b>Chuyến ${esc(t.code)}</b> ${badge(TST, t.status)}<div class="small muted">${t.date !== STATE.date ? `<b style="color:var(--bad)">Ngày ${fmtD(t.date)}</b> · ` : ''}Xe ${esc(t.vehicle || '—')} · Xuất phát DK ${t.plannedStart} · ${os.length} điểm · ~${t.planKm || 0} km · về DK ${t.planEnd || '—'} · ${loadTxt(t)}</div></div></div>
     <div class="steps">
       <div class="step ${t.tAccept ? 'done' : ''}">Nhận chuyến<b>${fmtHM(t.tAccept)}</b></div>
       <div class="step ${t.tLoadStart ? 'done' : ''}">Lên hàng<b>${fmtHM(t.tLoadStart)}</b></div>
@@ -1020,13 +1066,15 @@ function vSettings() {
     <label class="f">Giờ xuất phát mặc định${selectHTML('startTime', START_TIMES.map(x => [x, x]), s.startTime)}</label>
     <label class="f">Hệ số đường phố${selectHTML('roadFactor', [1.2, 1.3, 1.35, 1.4, 1.5].map(x => [x, '× ' + x]), s.roadFactor)}</label>
     <label class="f">Bắt buộc ảnh khi giao TC${selectHTML('requirePhoto', [['1', 'Có'], ['0', 'Không']], s.requirePhoto ? '1' : '0')}</label>
+    <label class="f">Chia việc theo tuyến${selectHTML('keepRoute', [['1', 'Ưu tiên giữ cùng tuyến / tiện đường'], ['0', 'Chỉ theo khoảng cách']], s.keepRoute === false ? '0' : '1')}</label>
+    <label class="f">Tải trọng xe${selectHTML('useCapacity', [['1', 'Xe đầy thì tách thêm chuyến'], ['0', 'Không xét tải trọng']], s.useCapacity === false ? '0' : '1')}</label>
   </div><button class="btn p mt" data-act="saveSettings">💾 Lưu thông số</button></div>
   ${cloudCard(true)}
   ${retentionCard()}
   <div class="card"><h3>🧹 Dữ liệu</h3><p class="small muted">Xóa toàn bộ dữ liệu trên máy này và nạp lại dữ liệu mẫu (không ảnh hưởng dữ liệu trên đám mây).</p><button class="btn r" data-act="resetDemo">Nạp lại dữ liệu mẫu</button></div>` :
   `<div class="card"><h3>☁️ Kết nối</h3><p class="small muted">${Cloud.enabled() ? `Đang đồng bộ qua ${Cloud.provider() === 'supabase' ? 'Supabase' : 'Google Sheet'}.` : 'Chưa kết nối đám mây – xin Admin “mã kết nối” rồi dán vào đây.'}</p>
     <label class="f full">Mã kết nối<textarea id="cc-in" placeholder="BC1:…"></textarea></label><button class="btn p mt" data-act="applyCode">Kết nối</button></div>`}
-  <p class="small muted mt">Phiên bản 1.1 · ${APP_NAME}</p>`;
+  <p class="small muted mt">Phiên bản 1.2 · ${APP_NAME}</p>`;
 }
 function cloudCard() {
   const c = Cloud.cfg, prov = STATE.f.prov || Cloud.provider();
@@ -1066,7 +1114,7 @@ CHG.prov = el => { STATE.f.prov = el.value; renderView(); };
 CHG.retMonths = el => { const s = S(); s.retentionMonths = +el.value; upsert('settings', s); log('Đổi thời hạn lưu trữ', 'settings', `${s.retentionMonths} tháng`); renderView(); };
 ACT.saveSettings = () => {
   const d = formData($('#sf')), s = S();
-  Object.assign(s, { depot: { ...s.depot, name: d.dname, lat: xlNum(d.dlat), lng: xlNum(d.dlng) }, speedKmh: +d.speedKmh, loadMin: +d.loadMin, defaultServiceMin: +d.defaultServiceMin, startTime: d.startTime, roadFactor: +d.roadFactor, requirePhoto: d.requirePhoto === '1' });
+  Object.assign(s, { depot: { ...s.depot, name: d.dname, lat: xlNum(d.dlat), lng: xlNum(d.dlng) }, speedKmh: +d.speedKmh, loadMin: +d.loadMin, defaultServiceMin: +d.defaultServiceMin, startTime: d.startTime, roadFactor: +d.roadFactor, requirePhoto: d.requirePhoto === '1', keepRoute: d.keepRoute === '1', useCapacity: d.useCapacity === '1' });
   upsert('settings', s); log('Sửa cài đặt', 'settings', JSON.stringify({ speed: s.speedKmh, load: s.loadMin, start: s.startTime })); toast('Đã lưu');
 };
 const cloudFromForm = () => { const d = formData($('#cf2')); return Object.assign({}, Cloud.cfg, d, { enabled: d.enabled === '1' }); };

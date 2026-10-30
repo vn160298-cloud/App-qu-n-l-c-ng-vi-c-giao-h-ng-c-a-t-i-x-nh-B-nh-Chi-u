@@ -1,5 +1,5 @@
 // Service worker: cache vỏ ứng dụng để mở được khi mất mạng
-const CACHE = 'giaohang-bc-v2';
+const CACHE = 'giaohang-bc-v3';
 const SHELL = [
   './', './index.html', './core.js', './app.js', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',

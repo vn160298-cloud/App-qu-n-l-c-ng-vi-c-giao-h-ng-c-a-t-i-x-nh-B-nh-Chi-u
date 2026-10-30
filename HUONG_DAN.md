@@ -89,10 +89,14 @@ Nếu sau này quy mô lớn hơn, có thể chuyển sang **Supabase**: app v�
 Tên sheet và cột cố định (IN HOA, không dấu): `DON_HANG`, `CHUYEN_GIAO`, `KHACH_HANG`, `TUYEN`, `XE`, `NHAN_SU`, `DOI_SOAT`, `NHAT_KY`, `MO_TA_COT`.
 Khóa liên kết: `MA_DON`, `MA_KH`, `MA_TAI_XE`, `MA_CHUYEN`. Vào **Excel In/Out → Tải file mẫu nhập liệu** để lấy mẫu. Khi nhập đơn chỉ cần `NGAY_GIAO` + `MA_KH`, app tự điền phần còn lại.
 
-## 7. Cách app tính tuyến & chia việc
-- Thời gian 1 chuyến = lên hàng + di chuyển (khoảng cách × hệ số đường phố ÷ tốc độ trung bình) + thời gian giao tại điểm + quay về kho. Các thông số chỉnh trong **Cài đặt**.
-- Cung đường: khách hẹn buổi sáng đi trước, buổi chiều đi sau. Trong mỗi buổi, app dùng thuật toán điểm gần nhất kết hợp 2-opt để chọn đường ngắn nhất. Khách nhận "Cả ngày" được chèn vào vị trí ít tốn đường nhất. Bấm **Chỉ đường Google Maps** để mở cả tuyến.
-- Muốn tính chính xác, khách hàng cần có **tọa độ** (Danh mục → Khách hàng → Lấy tọa độ). Khách chưa có tọa độ được tính tạm 12 phút di chuyển.
+## 7. Cách app tính tuyến, chia việc & chuyến giao
+- **1 chuyến = 1 lần xe rời kho.** Xe chở nhiều đơn, giao lần lượt từng điểm theo cung đường tốt nhất, giao xong điểm cuối mới về kho.
+- **Thời gian 1 chuyến** = lên hàng + di chuyển (khoảng cách × hệ số đường phố ÷ tốc độ trung bình) + thời gian giao tại điểm + quay về kho. Các thông số chỉnh trong **Cài đặt**.
+- **Cung đường:** khách hẹn buổi sáng giao trước, buổi chiều giao sau. Trong mỗi buổi, app chọn đường ngắn nhất (điểm gần nhất kết hợp 2-opt). Khách nhận "Cả ngày" được chèn vào chỗ tiện đường nhất. Bấm **Chỉ đường Google Maps** để mở cả tuyến.
+- **Ưu tiên cùng tuyến / tiện đường:** đơn cùng mã tuyến (T1, T2…) được gom thành một cụm. Đơn chưa có tuyến được nhập vào cụm có điểm gần nhất trong bán kính 3 km. App giao **nguyên cụm** cho một tài xế, và chỉ tách lẻ một cụm khi thời gian giữa các tài xế vẫn lệch quá 30 phút (ví dụ 1 tuyến có quá nhiều đơn cho 1 người). Tắt được trong Cài đặt → *Chia việc theo tuyến*.
+- **Tải trọng xe → nhiều chuyến trong ngày:** app cộng khối lượng các đơn (cột *Khối lượng kg*) và so với tải trọng xe (Danh mục → Xe). Xe đầy thì app tự tách thành chuyến 2, 3…: giao xong chuyến 1, về kho lấy hàng rồi đi tiếp. Chuyến sau xuất phát lúc chuyến trước về kho. Mỗi chuyến cũng gồm các điểm tiện đường liền nhau. Phần **chia đều** tính theo **tổng thời gian cả ngày** của mỗi tài xế. Tắt được trong Cài đặt → *Tải trọng xe*.
+- **Đơn phát sinh, ghép tiện đường:** khi tạo đơn mới mà trong ngày đã có chuyến, app tự mở **Gợi ý ghép tiện đường**. Gợi ý liệt kê các chuyến theo số phút đi thêm (tính từ điểm xe vừa giao, chèn vào chỗ tiện nhất) và gắn nhãn *cùng tuyến*, *xe đã rời kho*, *vượt tải*. Bấm **Ghép** là xong, app sắp lại thứ tự giao cho tài xế. Trang **Giao việc** cũng có khung *Ghép đơn tiện đường* cho tất cả đơn đang chờ.
+- Muốn tính chính xác, khách hàng cần có **tọa độ** (Danh mục → Khách hàng → Lấy tọa độ) và đơn cần có **khối lượng**. Khách chưa có tọa độ được tính tạm 12 phút di chuyển.
 
 ## 8. Lộ trình các giai đoạn sau
 - Nối hệ thống bán hàng / kế toán / kho qua Excel chuẩn, sau đó qua API của Supabase.

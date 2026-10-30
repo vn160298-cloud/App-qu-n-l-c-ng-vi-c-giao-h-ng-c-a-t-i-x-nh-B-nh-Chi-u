@@ -162,7 +162,7 @@ async function hashPin(id, pin) {
 
 /* ---------- Dữ liệu mẫu ---------- */
 const defaultSettings = () => ({ id: 'main', depot: { name: 'Kho nhà Bình Chiểu', address: 'P. Bình Chiểu, TP. Thủ Đức, TP.HCM', lat: 10.8822, lng: 106.7287 },
-  speedKmh: 22, roadFactor: 1.35, loadMin: 30, defaultServiceMin: 10, startTime: '07:30', requirePhoto: true, missingCoordMin: 12, retentionMonths: 3 });
+  speedKmh: 22, roadFactor: 1.35, loadMin: 30, defaultServiceMin: 10, startTime: '07:30', requirePhoto: true, missingCoordMin: 12, retentionMonths: 3, keepRoute: true, useCapacity: true });
 async function seedDemo() {
   const t = today();
   const st = defaultSettings();
@@ -292,8 +292,9 @@ const gpsLink = g => g ? `<a href="https://www.google.com/maps?q=${g.lat},${g.ln
    - Tuyến: ưu tiên khách hẹn buổi sáng trước, buổi chiều sau; trong mỗi
      buổi dùng Nearest-Neighbor + 2-opt để ra đường ngắn nhất; khách "Cả ngày"
      được chèn vào vị trí ít tốn đường nhất.
-   - Chia việc: tham lam LPT + tìm kiếm cục bộ, giảm thời gian của người
-     nhiều việc nhất cho tới khi các tài xế gần bằng nhau.
+   - Chia việc: gom đơn cùng tuyến / tiện đường thành cụm, giao nguyên cụm
+     cho tài xế; tìm kiếm cục bộ để thời gian cả ngày các tài xế gần bằng nhau.
+   - Tải trọng: xe đầy thì tách thành nhiều chuyến (về kho lấy hàng rồi đi tiếp).
    ===================================================================== */
 const depotPt = () => S().depot;
 const hasXY = p => p && p.lat != null && p.lng != null && p.lat !== '' && p.lng !== '';
@@ -375,35 +376,99 @@ function scheduleSeq(seq, plannedStart) {
   // work = thời gian làm việc thực (không tính chờ khung giờ khách) → dùng để so sánh/cân bằng
   return { rows, end: hhmm(t), totalMin: t - start, work: Math.round(t - start - wait), km: Math.round(dist * 10) / 10, wait: Math.round(wait) };
 }
-// Chia đơn cho tài xế sao cho tổng thời gian mỗi người gần bằng nhau
-function balanceOrders(orders, driverIds, baseline = {}) {
-  const g = driverIds.map(id => ({ id, os: [], base: baseline[id] || 0, t: baseline[id] || 0 }));
-  if (!g.length) return g;
-  const solo = o => svcMin(o) + 2 * travelMin(depotPt(), o);
-  const calc = x => x.base + tourMinutes(x.os);
-  [...orders].sort((a, b) => solo(b) - solo(a)).forEach(o => {
-    let best = null, bestT = Infinity;
-    for (const x of g) { const t = x.base + tourMinutes([...x.os, o]); if (t < bestT) { bestT = t; best = x; } }
-    // Chọn người hiện ít việc nhất nếu chênh lệch lớn; ngược lại chọn người ghép tuyến hiệu quả nhất
-    const minG = g.reduce((a, b) => a.t <= b.t ? a : b);
-    const target = (best.t - minG.t > 25) ? minG : best;
-    target.os.push(o); target.t = calc(target);
-  });
-  for (let it = 0; it < 400; it++) {
-    g.sort((a, b) => b.t - a.t);
-    const hi = g[0]; let moved = false;
-    for (let j = g.length - 1; j > 0 && !moved; j--) {
-      const lo = g[j]; let bestO = null, bestMax = hi.t;
-      for (const o of hi.os) {
-        const hT = hi.base + tourMinutes(hi.os.filter(x => x !== o)), lT = lo.base + tourMinutes([...lo.os, o]);
-        const m = Math.max(hT, lT); if (m < bestMax - 0.5) { bestMax = m; bestO = o; }
-      }
-      if (bestO) { hi.os = hi.os.filter(x => x !== bestO); lo.os.push(bestO); hi.t = calc(hi); lo.t = calc(lo); moved = true; }
-    }
-    if (!moved) break;
+/* ---------- Tải trọng xe → nhiều chuyến trong ngày ---------- */
+const kgOf = o => Number(o.weightKg) || 0;
+const capOfVeh = plate => Number(byId('vehicles', plate)?.capacityKg) || 0;      // 0 = không giới hạn
+const capOf = driverId => capOfVeh(byId('users', driverId)?.vehicle);
+const capOn = () => S().useCapacity !== false;
+const tripLoad = t => tripOrders(t).reduce((s, o) => s + kgOf(o), 0);
+// Tối ưu cả tuyến của tài xế rồi cắt theo thứ tự đường đi mỗi khi xe đầy:
+// chuyến 1 giao các điểm tiện đường đầu, về kho lấy hàng, chuyến 2 giao tiếp…
+function splitByCapacity(orders, cap, fast = true) {
+  if (!orders.length) return [];
+  if (!capOn() || !cap) return [orders];
+  const trips = []; let cur = [], load = 0;
+  for (const o of optimizeRoute(orders, depotPt(), fast)) {
+    if (cur.length && load + kgOf(o) > cap) { trips.push(cur); cur = []; load = 0; }
+    cur.push(o); load += kgOf(o);
   }
+  if (cur.length) trips.push(cur);
+  return trips;
+}
+// Tổng thời gian làm việc cả ngày (mỗi chuyến đều có lên hàng + chạy + giao + về kho)
+const dayMinutes = (orders, cap) => splitByCapacity(orders, cap).reduce((s, ch) => s + tourMinutes(ch), 0);
+
+/* ---------- Cụm cùng tuyến / tiện đường ---------- */
+// Đơn cùng mã tuyến là 1 cụm; đơn chưa có tuyến nhập vào cụm có điểm gần nhất trong bán kính 3 km
+function buildClusters(orders) {
+  if (S().keepRoute === false) return orders.map(o => [o]);
+  const byRoute = {}, loose = [];
+  orders.forEach(o => o.route ? (byRoute[o.route] = byRoute[o.route] || []).push(o) : loose.push(o));
+  const groups = Object.values(byRoute);
+  loose.forEach(o => {
+    let best = null, bd = 3;
+    for (const g of groups) for (const x of g) { const d = km(o, x); if (d != null && d < bd) { bd = d; best = g; } }
+    best ? best.push(o) : groups.push([o]);
+  });
+  return groups;
+}
+
+// Chia đơn cho tài xế sao cho tổng thời gian cả ngày gần bằng nhau, ưu tiên giữ nguyên cụm cùng tuyến
+function balanceOrders(orders, driverIds, baseline = {}) {
+  const g = driverIds.map(id => ({ id, os: [], base: baseline[id] || 0, cap: capOf(id), t: baseline[id] || 0 }));
+  if (!g.length) return g;
+  const calc = x => x.base + dayMinutes(x.os, x.cap);
+  const clusters = buildClusters(orders);
+  const weight = c => c.reduce((s, o) => s + svcMin(o), 0) + 2 * Math.min(...c.map(o => travelMin(depotPt(), o)));
+  // 1) Giao nguyên cụm, cụm nặng trước, cho người mà sau khi nhận vẫn ít thời gian nhất
+  clusters.sort((a, b) => weight(b) - weight(a)).forEach(c => {
+    let best = g[0], bestT = Infinity;
+    for (const x of g) { const t = x.base + dayMinutes([...x.os, ...c], x.cap); if (t < bestT) { bestT = t; best = x; } }
+    best.os.push(...c); best.t = calc(best);
+  });
+  // 2) Chuyển đơn vị (cụm hoặc đơn lẻ) từ người nhiều việc nhất sang người ít hơn nếu giảm được thời gian lớn nhất
+  const improve = unitsOf => {
+    for (let it = 0; it < 300; it++) {
+      g.sort((a, b) => b.t - a.t);
+      const hi = g[0]; let moved = false;
+      for (let j = g.length - 1; j > 0 && !moved; j--) {
+        const lo = g[j]; let best = null, bestMax = hi.t;
+        for (const u of unitsOf(hi)) {
+          const hT = hi.base + dayMinutes(hi.os.filter(o => !u.includes(o)), hi.cap), lT = lo.base + dayMinutes([...lo.os, ...u], lo.cap);
+          const m = Math.max(hT, lT); if (m < bestMax - 0.5) { bestMax = m; best = u; }
+        }
+        if (best) { hi.os = hi.os.filter(o => !best.includes(o)); lo.os.push(...best); hi.t = calc(hi); lo.t = calc(lo); moved = true; }
+      }
+      if (!moved) break;
+    }
+  };
+  improve(x => clusters.filter(c => c.every(o => x.os.includes(o))));
+  // 3) Chỉ tách lẻ cụm khi vẫn lệch quá 30 phút (VD: 1 tuyến quá nhiều đơn cho 1 người)
+  const spread = () => Math.max(...g.map(x => x.t)) - Math.min(...g.map(x => x.t));
+  if (S().keepRoute === false || spread() > 30) improve(x => x.os.map(o => [o]));
   return g;
 }
+
+/* ---------- Gợi ý ghép đơn tiện đường vào chuyến đã lập / đang chạy ---------- */
+// Với mỗi chuyến trong ngày: chèn đơn vào vị trí tốn ít đường nhất trong các điểm còn lại (tính từ điểm xe vừa giao)
+function insertionOptions(o) {
+  const res = [];
+  for (const t of DB.trips.filter(x => x.date === o.date && !['hoan_thanh', 'huy'].includes(x.status) && x.code !== o.tripCode)) {
+    const os = tripOrders(t), done = os.filter(x => isDone(x) || x.status === 'da_den'), rest = os.filter(x => !done.includes(x));
+    const moving = t.status === 'dang_di_chuyen';
+    const last = done[done.length - 1], start = moving && last && hasXY(last) ? last : depotPt();
+    let add = Infinity, addKm = 0;
+    for (let i = 0; i <= rest.length; i++) {
+      const a = i === 0 ? start : rest[i - 1], b = i < rest.length ? rest[i] : depotPt();
+      const m = travelMin(a, o) + travelMin(o, b) - travelMin(a, b);
+      if (m < add) { add = m; addKm = (km(a, o) || 0) + (km(o, b) || 0) - (km(a, b) || 0); }
+    }
+    const cap = capOfVeh(t.vehicle), load = tripLoad(t) + kgOf(o);
+    res.push({ t, add: Math.max(0, Math.round(add)) + svcMin(o), km: Math.max(0, Math.round(addKm * 10) / 10), cap, load, over: capOn() && cap > 0 && load > cap, moving, sameRoute: !!o.route && os.some(x => x.route === o.route) });
+  }
+  return res.sort((a, b) => (a.over - b.over) || (a.add - b.add));
+}
+
 // Lập lại thứ tự & ETA cho một chuyến đã tạo
 function planTrip(t, reorder = true) {
   const os = tripOrders(t);
