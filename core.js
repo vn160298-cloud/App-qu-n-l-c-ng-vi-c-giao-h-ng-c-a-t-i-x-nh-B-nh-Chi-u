@@ -7,7 +7,7 @@
    ===================================================================== */
 
 const APP_NAME = 'App quản lý công việc giao hàng của tài xế nhà Bình Chiểu';
-const APP_VERSION = '2.0.1';   // đổi cùng version.json mỗi lần phát hành
+const APP_VERSION = '2.0.2';   // đổi cùng version.json mỗi lần phát hành
 const SCHEMA_VERSION = 2;      // tăng khi đổi cấu trúc dữ liệu → tự chạy migrate()
 
 const ROLES = { admin: 'Quản trị (Admin)', dieuphoi: 'Điều phối', taixe: 'Tài xế', ketoan: 'Kế toán / Đối soát' };

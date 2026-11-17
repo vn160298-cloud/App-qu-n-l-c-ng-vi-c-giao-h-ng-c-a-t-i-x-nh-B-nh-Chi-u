@@ -1,7 +1,8 @@
 {
-  "version": "2.0.1",
+  "version": "2.0.2",
   "date": "2026-11-17",
   "notes": [
+    "Sửa nút “Cập nhật ngay”: app luôn nạp file mới nhất, không dùng lại file cũ trong bộ nhớ đệm",
     "Bỏ phần tuyến giao: chia việc gom theo quận/huyện và tỉnh",
     "Dữ liệu tuyến cũ vẫn được giữ trong máy và Google Sheet, chỉ không còn dùng",
     "Giao diện NutriNest Factory (Kho vận), đăng nhập ghi nhớ, xem PIN",

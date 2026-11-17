@@ -46,7 +46,11 @@ Dữ liệu nằm trong **bộ nhớ máy** (IndexedDB) và **Google Sheet / Dri
 1. (Khuyến nghị) **Quản trị → Phiên bản & sao lưu → Sao lưu dữ liệu (JSON)**.
 2. Thay file mới trong repo GitHub: tải lên đè các file `.html`, `.js`, `sw.js`, `version.json`, `google-apps-script/Code.gs` (không cần tải `.claude`). Khi phát hành bản mới, đổi số phiên bản ở cả `APP_VERSION` trong `core.js` và `version.json`.
 3. Nếu `Code.gs` có thay đổi: dán vào Apps Script rồi **Triển khai → Quản lý triển khai → ✏️ → Phiên bản mới** (giữ nguyên URL, không cần dán lại URL trên các máy).
-4. Điện thoại mở app có mạng sẽ hiện thanh vàng **“Có phiên bản mới – Cập nhật ngay”**. Bấm là xong.
+4. **Đợi GitHub xong rồi mới cập nhật**: vào tab **Actions** của repo, chờ dấu ✓ xanh (thường 1–2 phút). Sau đó điện thoại mở app có mạng sẽ hiện thanh vàng **“Có phiên bản mới – Cập nhật ngay”**. Bấm là xong.
+   - Từ bản 2.0.2, app luôn nạp file mới nhất kèm số phiên bản, nên bấm cập nhật là lên bản mới ngay.
+   - **Bản cũ hơn 2.0.2** còn bị bộ nhớ đệm của GitHub giữ tối đa khoảng 10 phút: đợi 10 phút sau khi Actions xong, đóng hẳn app (vuốt khỏi danh sách đa nhiệm) rồi mở lại. Một lần cập nhật này sẽ đưa máy lên bản có cơ chế mới.
+   - Bấm cập nhật mà thanh vàng vẫn hiện: mở file `core.js` trên GitHub, kiểm tra dòng `APP_VERSION` đã là số mới giống `version.json` (nếu chưa là do file chưa được tải lên đè). Quên đổi số trong `version.json` thì máy không biết có bản mới.
+   - Chỉ khi vẫn không được: Android (Chrome) vào Cài đặt trang web → Xóa dữ liệu trình duyệt của trang (dữ liệu chưa đồng bộ lên Google Sheet sẽ mất, nên **sao lưu trước**). iPhone không nên xóa app khỏi màn hình chính nếu chưa đồng bộ, vì dữ liệu trên máy đi theo app.
 5. Nếu cấu trúc dữ liệu đổi (số `SCHEMA_VERSION` tăng), app tự chuyển dữ liệu cũ sang cấu trúc mới ở lần mở đầu tiên và báo kết quả trên Tổng quan. Nâng từ bản 1.x lên 2.0: đơn cũ được bỏ trường thu hộ / hàng hóa, thêm hạn giao; dữ liệu mẫu cũ bị gỡ; khách hàng, tuyến, xe, nhân sự bạn tự thêm được **giữ nguyên**.
 6. Có sự cố: **Khôi phục từ file sao lưu**.
 

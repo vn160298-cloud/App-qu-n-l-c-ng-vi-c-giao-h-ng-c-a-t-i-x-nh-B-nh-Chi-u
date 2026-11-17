@@ -130,13 +130,20 @@ async function checkAppUpdate(manual) {
 }
 function showUpdateBar(msg) {
   if ($('#updbar')) return;
+  // Đã bấm cập nhật mà vẫn đang ở bản cũ → nói rõ nguyên nhân thường gặp
+  let tried = ''; try { tried = sessionStorage.getItem('bc_upd_try') === APP_VERSION ? ' Đã thử cập nhật nhưng vẫn là bản cũ: kiểm tra tab Actions của GitHub đã xong (dấu ✓ xanh) và file core.js trên GitHub đã có APP_VERSION mới, rồi đợi vài phút.' : ''; } catch {}
   const d = document.createElement('div'); d.id = 'updbar'; d.className = 'updbar';
-  d.innerHTML = `<span>${esc(msg)} Dữ liệu của bạn được giữ nguyên.</span>${btn('Cập nhật ngay', 'applyUpdate', '', 'secondary', 'sm')}`;
+  d.innerHTML = `<span>${esc(msg)} Dữ liệu của bạn được giữ nguyên.${esc(tried)}</span>${btn('Cập nhật ngay', 'applyUpdate', '', 'secondary', 'sm')}`;
   const top = $('.app-top'); top ? top.after(d) : document.body.prepend(d);
 }
 ACT.applyUpdate = async () => {
-  try { await flush(); const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.unregister())); } catch {}
-  location.reload();
+  toast('Đang cập nhật…', 4000);
+  try { sessionStorage.setItem('bc_upd_try', APP_VERSION); } catch {}
+  try { await flush(); } catch {}
+  try { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); } catch {}
+  try { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.unregister())); } catch {}
+  try { localStorage.removeItem('bc_ver'); } catch {}
+  location.replace(location.pathname + '?u=' + Date.now());   // địa chỉ mới → bỏ qua trang cũ trong bộ nhớ đệm
 };
 
 /* ---------- Sự kiện chung (event delegation) ---------- */
