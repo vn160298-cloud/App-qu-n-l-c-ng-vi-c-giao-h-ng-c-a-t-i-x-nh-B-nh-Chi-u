@@ -1,7 +1,9 @@
 {
-  "version": "2.0.0",
+  "version": "2.0.1",
   "date": "2026-11-17",
   "notes": [
+    "Bỏ phần tuyến giao: chia việc gom theo quận/huyện và tỉnh",
+    "Dữ liệu tuyến cũ vẫn được giữ trong máy và Google Sheet, chỉ không còn dùng",
     "Giao diện NutriNest Factory (Kho vận), đăng nhập ghi nhớ, xem PIN",
     "Danh mục khách hàng, địa chỉ giao, tuyến theo tỉnh từ file Excel; nhập đơn giao theo file mẫu",
     "Đơn giao có hạn giao, ngày tạo đơn, số thùng, kg; bỏ thu hộ và hàng hóa",

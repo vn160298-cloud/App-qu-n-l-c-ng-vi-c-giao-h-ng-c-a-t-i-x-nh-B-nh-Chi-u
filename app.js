@@ -77,7 +77,7 @@ ACT.pg = v => { const [k, d] = v.split('|'); STATE.pg[k] = Math.max(0, (STATE.pg
 
 // Chọn khách hàng có tìm kiếm (danh mục hàng nghìn khách)
 function custPicker(code, name) {
-  return `<div class="nn-field full"><span class="nn-label">Khách hàng – gõ mã hoặc tên để tìm, chọn là tự điền địa chỉ, tuyến, hạn giao</span>
+  return `<div class="nn-field full"><span class="nn-label">Khách hàng – gõ mã hoặc tên để tìm, chọn là tự điền địa chỉ, tỉnh, hạn giao</span>
     <span class="nn-input-wrap nn-input-md"><input class="nn-input" data-custsearch="1" autocomplete="off" placeholder="Tìm khách hàng…" value="${esc(code ? `${code} – ${name || ''}` : '')}"></span>
     <div id="cp-list" class="picklist" hidden></div><input type="hidden" name="customerCode" value="${esc(code || '')}"></div>`;
 }
@@ -89,7 +89,7 @@ function custSearch(q, limit = 30) {
 document.addEventListener('input', e => {
   const el = e.target.closest('[data-custsearch]'); if (!el) return;
   const list = $('#cp-list'); const rs = custSearch(el.value.replace(/^\S+ – /, ''));
-  list.hidden = false; list.innerHTML = rs.map(c => `<div data-act="pickCust" data-id="${esc(c.code)}"><b class="nn-mono">${esc(c.code)}</b> · ${esc(c.name)}<div class="small muted">${esc([c.province, c.route, c.address].filter(Boolean).join(' · '))}</div></div>`).join('') || '<div class="muted">Không thấy khách phù hợp</div>';
+  list.hidden = false; list.innerHTML = rs.map(c => `<div data-act="pickCust" data-id="${esc(c.code)}"><b class="nn-mono">${esc(c.code)}</b> · ${esc(c.name)}<div class="small muted">${esc([c.province, c.address].filter(Boolean).join(' · '))}</div></div>`).join('') || '<div class="muted">Không thấy khách phù hợp</div>';
 });
 
 /* ---------- Khởi động ---------- */

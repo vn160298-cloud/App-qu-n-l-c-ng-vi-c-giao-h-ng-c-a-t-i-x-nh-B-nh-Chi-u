@@ -8,13 +8,13 @@ const uniq = arr => [...new Set(arr.filter(Boolean))].sort((a, b) => String(a).l
 const dlist = (id, arr) => `<datalist id="${id}">${arr.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
 
 /* =====================================================================
-   DANH MỤC — khách hàng, tuyến giao, xe, người dùng (sửa tự do, lọc theo tỉnh, xuất file)
+   DANH MỤC — khách hàng, xe, người dùng (sửa tự do, lọc theo tỉnh, xuất file)
    ===================================================================== */
-const CAT_TABS = [['customers', 'Khách hàng'], ['routes', 'Tuyến giao'], ['vehicles', 'Xe'], ['users', 'Người dùng']];
+const CAT_TABS = [['customers', 'Khách hàng'], ['vehicles', 'Xe'], ['users', 'Người dùng']];
 function vCatalog() {
   const tabs = CAT_TABS.filter(([k]) => k !== 'users' || isAdmin());
   const k = tabs.some(([x]) => x === STATE.catTab) ? STATE.catTab : 'customers';
-  const body = { customers: catCustomers, routes: catRoutes, vehicles: catVehicles, users: catUsers }[k]();
+  const body = { customers: catCustomers, vehicles: catVehicles, users: catUsers }[k]();
   return `${pageTitle('Danh mục', `${btn(`${ico('down')} Xuất danh mục (Excel)`, 'exportCatalog')}`)}
   <div class="rw center mb"><div class="seg lg">${tabs.map(([x, l]) => `<button type="button" data-act="catTab" data-id="${x}" class="${x === k ? 'on' : ''}">${l} (${num(DB[x].length, 0)})</button>`).join('')}</div></div>${body}`;
 }
@@ -22,7 +22,7 @@ ACT.catTab = k => { STATE.catTab = k; STATE.f = {}; STATE.pg = {}; renderView();
 ACT.exportCatalog = () => {
   if (!needXLSX()) return;
   const noPin = DB.users.map(u => ({ ...u }));
-  writeWorkbook([[XL.customers.sheet, toXlRows('customers', DB.customers)], [XL.addresses.sheet, addressRows(DB.customers)], [XL.routes.sheet, toXlRows('routes', DB.routes)], [XL.vehicles.sheet, toXlRows('vehicles', DB.vehicles)], [XL.users.sheet, toXlRows('users', noPin)]], `DanhMuc_${today()}.xlsx`);
+  writeWorkbook([[XL.customers.sheet, toXlRows('customers', DB.customers)], [XL.addresses.sheet, addressRows(DB.customers)], [XL.vehicles.sheet, toXlRows('vehicles', DB.vehicles)], [XL.users.sheet, toXlRows('users', noPin)]], `DanhMuc_${today()}.xlsx`);
   toast('Đã xuất danh mục để lưu trữ');
 };
 const catToolbar = (addLabel, extra = '') => `<div class="rw center mb">${can('catalog.edit') ? btn(`${ico('plus')} ${addLabel}`, 'catEdit', '', 'primary') : ''}${extra}</div>`;
@@ -30,28 +30,18 @@ const catToolbar = (addLabel, extra = '') => `<div class="rw center mb">${can('c
 // --- Khách hàng
 function custList() {
   const f = STATE.f, q = vnorm(f.q || '');
-  return DB.customers.filter(c => (!f.prov || c.province === f.prov) && (!f.route || c.route === f.route) && (!f.ch || c.channel === f.ch) &&
+  return DB.customers.filter(c => (!f.prov || c.province === f.prov) && (!f.ch || c.channel === f.ch) &&
     (!f.geo || (f.geo === 'precise' ? precise(c) : !precise(c))) && (!q || vnorm(`${c.code} ${c.name} ${c.alias || ''} ${c.address || ''} ${c.chain || ''}`).includes(q))).sort((a, b) => a.code.localeCompare(b.code));
 }
 function catCustomers() {
   const f = STATE.f, list = custList(), pg = pager(list.length, 'cust', 50);
   return `${catToolbar('Thêm khách hàng')}
-  <div class="filters">${fsel('Tỉnh', 'prov', provOpts(), f.prov, { empty: 'Tất cả tỉnh', cls: 'narrow', attrs: 'data-chg="f"' })}${fsel('Tuyến', 'route', routeOpts(), f.route, { empty: 'Tất cả tuyến', cls: 'narrow', attrs: 'data-chg="f"' })}
+  <div class="filters">${fsel('Tỉnh', 'prov', provOpts(), f.prov, { empty: 'Tất cả tỉnh', cls: 'narrow', attrs: 'data-chg="f"' })}
     ${fsel('Kênh', 'ch', uniq(DB.customers.map(c => c.channel)).map(x => [x, x]), f.ch, { empty: 'Tất cả kênh', cls: 'narrow', attrs: 'data-chg="f"' })}
     ${fsel('Tọa độ', 'geo', [['precise', 'Chính xác (GPS / nhập tay)'], ['approx', 'Ước lượng theo quận / tỉnh']], f.geo, { empty: 'Tất cả', cls: 'narrow', attrs: 'data-chg="f"' })}
     ${fld('Tìm kiếm', 'q', f.q || '', { cls: 'grow', ph: 'Mã, tên, địa chỉ, chuỗi…', attrs: 'data-inp="1"' })}</div>
   <p class="small muted mb">${num(list.length, 0)} khách hàng · ${num(list.filter(precise).length, 0)} có tọa độ chính xác</p>
-  ${tbl(['Mã KH', 'Tên khách hàng', 'Kênh', 'Tỉnh', 'Tuyến', ['Hạn mức (ngày)', 'num'], 'Địa chỉ giao', 'Tọa độ'], list.slice(pg.from, pg.to).map(c => `<tr class="click" data-act="catEdit" data-id="${esc(c.id)}"><td class="nn-mono">${esc(c.code)}</td><td class="wrap">${esc(c.name)}${c.chain ? `<div class="small muted">${esc(c.chain)}</div>` : ''}</td><td>${esc(c.channel || '')}</td><td>${esc(c.province || '')}</td><td>${esc(c.route || '')}</td><td class="num">${c.slaDays ?? '<span class="muted">mặc định ' + (S().defaultSlaDays ?? 3) + '</span>'}</td><td class="wrap">${esc(c.address || '')}${(c.addresses || []).length > 1 ? `<div class="small muted">+${c.addresses.length - 1} địa chỉ khác</div>` : ''}</td><td>${precise(c) ? statusTag('Chính xác', 'success') : hasXY(c) ? statusTag('Ước lượng', 'info') : statusTag('Chưa có', 'warning')}</td></tr>`))}${pg.html}`;
-}
-// --- Tuyến giao (lọc theo tỉnh)
-function catRoutes() {
-  const f = STATE.f, q = vnorm(f.q || '');
-  const list = DB.routes.filter(r => (!f.prov || r.province === f.prov) && (!q || vnorm(`${r.code} ${r.name} ${r.province} ${r.area}`).includes(q))).sort((a, b) => (a.province || '').localeCompare(b.province || '', 'vi') || a.code.localeCompare(b.code, 'vi'));
-  const cnt = code => DB.customers.filter(c => c.route === code).length, pg = pager(list.length, 'routes', 60);
-  return `${catToolbar('Thêm tuyến')}
-  <div class="filters">${fsel('Tỉnh', 'prov', provOpts(), f.prov, { empty: `Tất cả tỉnh (${provinceNames().length})`, cls: 'narrow', attrs: 'data-chg="f"' })}${fld('Tìm kiếm', 'q', f.q || '', { cls: 'grow', ph: 'Mã tuyến, tỉnh, khu vực…', attrs: 'data-inp="1"' })}</div>
-  <p class="small muted mb">${num(list.length, 0)} tuyến · khách chưa gán tuyến chính thức được gom theo quận / tỉnh khi chia việc</p>
-  ${tbl(['Mã tuyến', 'Tên tuyến', 'Tỉnh', 'Khu vực', 'Vùng miền', ['Số khách', 'num']], list.slice(pg.from, pg.to).map(r => `<tr class="click" data-act="catEdit" data-id="${esc(r.id)}"><td class="nn-mono">${esc(r.code)}</td><td>${esc(r.name || '')}</td><td>${esc(r.province || '')}</td><td>${esc(r.area || '')}</td><td>${esc(r.region || '')}</td><td class="num">${num(cnt(r.code), 0)}</td></tr>`))}${pg.html}`;
+  ${tbl(['Mã KH', 'Tên khách hàng', 'Kênh', 'Tỉnh', 'Quận/huyện', ['Hạn mức (ngày)', 'num'], 'Địa chỉ giao', 'Tọa độ'], list.slice(pg.from, pg.to).map(c => `<tr class="click" data-act="catEdit" data-id="${esc(c.id)}"><td class="nn-mono">${esc(c.code)}</td><td class="wrap">${esc(c.name)}${c.chain ? `<div class="small muted">${esc(c.chain)}</div>` : ''}</td><td>${esc(c.channel || '')}</td><td>${esc(c.province || '')}</td><td>${esc(c.district || '')}</td><td class="num">${c.slaDays ?? '<span class="muted">mặc định ' + (S().defaultSlaDays ?? 3) + '</span>'}</td><td class="wrap">${esc(c.address || '')}${(c.addresses || []).length > 1 ? `<div class="small muted">+${c.addresses.length - 1} địa chỉ khác</div>` : ''}</td><td>${precise(c) ? statusTag('Chính xác', 'success') : hasXY(c) ? statusTag('Ước lượng', 'info') : statusTag('Chưa có', 'warning')}</td></tr>`))}${pg.html}`;
 }
 // --- Xe
 function catVehicles() {
@@ -91,13 +81,12 @@ ACT.catEdit = id => {
       ${fld('Tên gọi khác (tên trong file đơn)', 'alias', r.alias || '', { cls: 'grow' })}${fld('Kênh bán hàng', 'channel', r.channel || '', { cls: 'narrow', list: 'dl-ch' })}${fld('Chuỗi', 'chain', r.chain || '', { cls: 'narrow' })}${fld('SĐT', 'phone', r.phone || '', { type: 'tel', cls: 'narrow' })}
       ${fld('Địa chỉ giao mặc định', 'address', r.address || '', { cls: 'full' })}
       ${ftxt('Các địa chỉ giao khác (mỗi dòng: MÃ ĐỊA CHỈ | địa chỉ)', 'addrs', (r.addresses || []).map(a => `${a.code} | ${a.address}`).join('\n'))}
-      ${fsel('Tỉnh', 'province', provOpts(), r.province, { empty: '—', cls: 'narrow' })}${fsel('Tuyến', 'route', routeOpts(), r.route, { empty: '—', cls: 'narrow' })}${fld('Khu vực', 'area', r.area || '', { cls: 'narrow' })}
+      ${fsel('Tỉnh', 'province', provOpts(), r.province, { empty: '—', cls: 'narrow' })}${fld('Khu vực', 'area', r.area || '', { cls: 'narrow' })}
       ${fld('Hạn mức giao hàng', 'slaDays', r.slaDays ?? '', { fmt: true, unit: 'ngày', cls: 'narrow', msg: `Hạn giao = ngày đặt + hạn mức (trống = ${S().defaultSlaDays ?? 3} ngày)` })}${fld('Thời gian giao tại điểm', 'serviceMin', r.serviceMin ?? '', { fmt: true, unit: 'phút', cls: 'narrow' })}
       ${fld('Vĩ độ', 'lat', r.lat ?? '', { cls: 'narrow', attrs: 'inputmode="decimal"' })}${fld('Kinh độ', 'lng', r.lng ?? '', { cls: 'narrow', attrs: 'inputmode="decimal"' })}
       <div class="nn-field full"><span class="nn-field-msg">Nguồn tọa độ: <b>${{ gps: 'GPS tài xế', manual: 'nhập tay', quan: 'ước lượng theo quận/huyện', tinh: 'ước lượng theo tỉnh' }[r.geoSrc] || 'chưa có'}</b> · Khách nhận hàng trong giờ hành chính, khung giờ chọn theo từng đơn.</span>
       <span class="rw mt">${btn(`${ico('pin', 16)} Lấy GPS hiện tại`, 'gpsHere', '', 'secondary', 'sm')}${btn('Ước lượng lại từ địa chỉ', 'guessHere', '', 'secondary', 'sm')}</span></div>
       ${ftxt('Ghi chú', 'note', r.note || '')}<input type="hidden" name="geoSrc" value="${esc(r.geoSrc || '')}"></div>${dlist('dl-ch', uniq(DB.customers.map(c => c.channel)))}`,
-    routes: () => `<div class="rw" id="cf">${fld('Mã tuyến', 'code', r.code || '', { required: true, cls: 'narrow' })}${fld('Tên tuyến', 'name', r.name || '', { cls: 'grow' })}${fsel('Tỉnh', 'province', provOpts(), r.province, { empty: '—', cls: 'narrow' })}${fld('Khu vực', 'area', r.area || '', { cls: 'narrow', list: 'dl-ar' })}${fld('Vùng miền', 'region', r.region || '', { cls: 'narrow', list: 'dl-rg' })}</div>${dlist('dl-ar', uniq(DB.routes.map(x => x.area)))}${dlist('dl-rg', ['Miền Bắc', 'Miền Trung', 'Miền Nam'])}`,
     vehicles: () => `<div class="rw" id="cf">${fld('Biển số', 'plate', r.plate || '', { required: true, cls: 'narrow', msg: 'Có thể sửa tự do; đổi biển số sẽ cập nhật tài xế và chuyến đang dùng xe này' })}${fld('Loại xe', 'type', r.type || '', { cls: 'narrow', list: 'dl-vt', ph: 'Chọn hoặc gõ loại xe' })}${fld('Tải trọng', 'capacityKg', r.capacityKg ?? '', { fmt: true, unit: 'kg', cls: 'narrow' })}</div>${dlist('dl-vt', uniq([...VEHICLE_TYPES, ...DB.vehicles.map(v => v.type)]))}`,
     users: () => `<div class="rw" id="cf">${fld('Mã NV', 'id', r.id || '', { required: true, cls: 'narrow', msg: isNew ? 'VD: TX05, 01, KV-12' : 'Đổi mã NV sẽ phải cấp lại PIN' })}${fld('Họ tên', 'name', r.name || '', { required: true })}
       ${fsel('Vai trò', 'role', Object.entries(ROLES), r.role || 'taixe', { cls: 'narrow' })}${fld('Nhà máy', 'plant', r.plant ?? DEFAULT_PLANT, { cls: 'narrow', list: 'dl-pl' })}${fld('Bộ phận', 'dept', r.dept ?? DEFAULT_DEPT, { cls: 'narrow', list: 'dl-dp' })}
@@ -106,14 +95,14 @@ ACT.catEdit = id => {
       ${dlist('dl-pl', uniq([DEFAULT_PLANT, ...DB.users.map(u => u.plant)]))}${dlist('dl-dp', uniq([DEFAULT_DEPT, 'Kỹ thuật', 'Sản xuất', 'QA', 'Thu mua', ...DB.users.map(u => u.dept)]))}${dlist('dl-vh', DB.vehicles.map(v => v.plate))}
       ${alertBox('info', '', 'Vai trò quyết định quyền: <b>Admin</b> toàn quyền · <b>Điều phối</b> tạo đơn, giao việc, theo dõi bản đồ · <b>Tài xế</b> chỉ thấy việc của mình · <b>Kế toán</b> đối soát, báo cáo.')}`,
   };
-  const title = { customers: 'khách hàng', routes: 'tuyến giao', vehicles: 'xe', users: 'nhân sự' }[k];
+  const title = { customers: 'khách hàng', vehicles: 'xe', users: 'nhân sự' }[k];
   openModal(`${isNew ? 'Thêm' : 'Sửa'} ${title}`, `${forms[k]()}<div class="rw center mt"><span class="grow"></span>${!isNew && isAdmin() && !(k === 'users' && id === ME.id) ? btn('Xóa', 'catDel', id, 'danger') : ''}${btn(`${ico('save')} Lưu`, 'catSave', id || '', 'primary', 'lg')}</div>`, true);
 };
 ACT.gpsHere = async () => { toast('Đang lấy vị trí…'); const g = await getGPS(); if (!g) return toast('Không lấy được vị trí'); $('#cf [name=lat]').value = g.lat; $('#cf [name=lng]').value = g.lng; $('#cf [name=geoSrc]').value = 'manual'; toast(`Đã lấy tọa độ (±${g.acc} m)`); };
 ACT.guessHere = () => { const f = formData($('#cf')), g = guessGeo(f.address, f.province); if (!g) return toast('Không nhận ra tỉnh / quận từ địa chỉ'); $('#cf [name=lat]').value = g.lat; $('#cf [name=lng]').value = g.lng; $('#cf [name=geoSrc]').value = g.src; if (!f.province) $('#cf [name=province]').value = g.province; toast(`Ước lượng theo ${g.district || g.province}`); };
 ACT.catSave = async id => {
   const k = STATE.catTab, d = formData($('#cf')), isNew = !id;
-  const key = { customers: d.code, routes: d.code, vehicles: d.plate, users: d.id }[k];
+  const key = { customers: d.code, vehicles: d.plate, users: d.id }[k];
   if (!key) return toast('Thiếu mã / biển số'); if (k !== 'users' || true) { if ((isNew || key !== id) && byId(k, key)) return toast('Mã này đã tồn tại'); }
   if (k === 'customers' && !d.name) return toast('Thiếu tên khách hàng'); if (k === 'users' && !d.name) return toast('Thiếu họ tên');
   if (k === 'users' && !isNew && id === ME.id && (key !== id || d.role !== 'admin' || d.active === '0')) return toast('Không thể tự đổi mã, bỏ quyền Admin hoặc khóa chính mình');
@@ -122,14 +111,12 @@ ACT.catSave = async id => {
   if (k === 'customers') {
     const addrs = (d.addrs || '').split('\n').map(s => s.trim()).filter(Boolean).map((s, i) => { const [a, ...b] = s.split('|'); return b.length ? { code: a.trim(), address: b.join('|').trim() } : { code: `${key}_S${z2(i + 1)}`, address: s }; });
     const addrChanged = r.address !== d.address;
-    Object.assign(r, { code: key, name: d.name, alias: d.alias, channel: d.channel, chain: d.chain, phone: d.phone, address: d.address, addresses: addrs, province: d.province, route: d.route, area: d.area, slaDays: parseVN(d.slaDays), serviceMin: parseVN(d.serviceMin), note: d.note });
+    Object.assign(r, { code: key, name: d.name, alias: d.alias, channel: d.channel, chain: d.chain, phone: d.phone, address: d.address, addresses: addrs, province: d.province, area: d.area, slaDays: parseVN(d.slaDays), serviceMin: parseVN(d.serviceMin), note: d.note });
     const la = parseGeo(d.lat), ln = parseGeo(d.lng), moved = la != null && (la !== r.lat || ln !== r.lng);
     Object.assign(r, { lat: la, lng: ln, geoSrc: moved && d.geoSrc !== 'gps' && d.geoSrc !== 'manual' ? 'manual' : d.geoSrc });
     if ((la == null || (addrChanged && !precise(r))) && d.address) { const g = guessGeo(d.address, d.province); if (g) { Object.assign(r, { lat: g.lat, lng: g.lng, geoSrc: g.src, district: g.district }); if (!r.province) r.province = g.province; } }
     if (!r.province && d.address) r.province = provinceOf(d.address);
-    if (d.route && !byId('routes', d.route)) toast(`Mã tuyến “${d.route}” chưa có trong danh sách tuyến`);
-  } else if (k === 'routes') Object.assign(r, { code: key, name: d.name || key, province: d.province, area: d.area, region: d.region });
-  else if (k === 'vehicles') Object.assign(r, { plate: key, type: d.type, capacityKg: parseVN(d.capacityKg) });
+  } else if (k === 'vehicles') Object.assign(r, { plate: key, type: d.type, capacityKg: parseVN(d.capacityKg) });
   else if (k === 'users') {
     Object.assign(r, { name: d.name, role: d.role, plant: d.plant, dept: d.dept, phone: d.phone, vehicle: d.vehicle, active: d.active !== '0' });
     if (isNew) r.pinHash = '';
@@ -162,7 +149,7 @@ function vData() {
 }
 const colDoc = () => Object.values(XL).flatMap(x => x.cols.map(([, h, note]) => ({ SHEET: x.sheet, COT: h, MO_TA: note })));
 ACT.exportAll = () => writeWorkbook([
-  ...['orders', 'trips', 'customers', 'routes', 'vehicles', 'users', 'settlements', 'logs'].map(k => [XL[k].sheet, toXlRows(k, DB[k])]), [XL.addresses.sheet, addressRows(DB.customers)],
+  ...['orders', 'trips', 'customers', 'vehicles', 'users', 'settlements', 'logs'].map(k => [XL[k].sheet, toXlRows(k, DB[k])]), [XL.addresses.sheet, addressRows(DB.customers)],
   ['MO_TA_COT', colDoc()]], `GiaoHangBinhChieu_${today()}.xlsx`);
 CHG.catFiles = async el => {
   const files = [...el.files]; el.value = ''; if (!files.length || !needXLSX()) return;
@@ -186,15 +173,14 @@ CHG.catFiles = async el => {
   } catch (e) { box.innerHTML = alertBox('danger', 'Lỗi đọc file', esc(e.message)); }
 };
 ACT.doCatImport = () => {
-  const { list, byC } = STATE.catImp || {}; if (!list) return; let add = 0, upd = 0, newR = 0;
+  const { list, byC } = STATE.catImp || {}; if (!list) return; let add = 0, upd = 0;
   for (const c of list) {
     const prev = byId('customers', c.c); const r = buildCustomer(c, byC[c.c] || (prev ? (prev.addresses || []).map(a => [c.c, a.code, a.address]) : []), prev);
     if (prev) { r.phone = prev.phone || c.phone || ''; r.note = prev.note || ''; r.serviceMin = prev.serviceMin ?? null; if (!c.sla && prev.slaDays != null) r.slaDays = prev.slaDays; if (!r.name) r.name = prev.name; } else if (c.phone) r.phone = c.phone;
     upsert('customers', r); prev ? upd++ : add++;
-    if (c.rt && !byId('routes', c.rt)) { upsert('routes', { id: c.rt, code: c.rt, name: c.rt, province: provinceOfRoute(c.rt), area: c.ar || '', region: c.rg || '' }); newR++; }
   }
-  log('Nhập danh mục khách hàng', 'Excel', `Thêm ${add}, cập nhật ${upd}, tuyến mới ${newR}`); STATE.catImp = null;
-  $('#cat-imp').innerHTML = alertBox('success', 'Đã nhập danh mục', `Thêm ${num(add, 0)} khách, cập nhật ${num(upd, 0)} khách, thêm ${num(newR, 0)} tuyến.`);
+  log('Nhập danh mục khách hàng', 'Excel', `Thêm ${add}, cập nhật ${upd}`); STATE.catImp = null;
+  $('#cat-imp').innerHTML = alertBox('success', 'Đã nhập danh mục', `Thêm ${num(add, 0)} khách, cập nhật ${num(upd, 0)} khách.`);
 };
 
 /* =====================================================================
@@ -227,7 +213,7 @@ function vAdmin() {
     ${fsel('Hạn mức giao mặc định', 'defaultSlaDays', [1, 2, 3, 5, 7, 10].map(x => [x, x + ' ngày']), s.defaultSlaDays ?? 3, { cls: 'narrow', msg: 'Khi khách chưa có hạn mức' })}${fsel('Quãng đường tối đa tự xếp', 'maxDayKm', [100, 150, 200, 250, 300, 500, 1000].map(x => [x, x + ' km một chiều']), s.maxDayKm ?? 250, { cls: 'narrow', msg: 'Đơn xa hơn để riêng, không tự xếp' })}${fsel('Giao sớm tối đa', 'earlyDays', [0, 1, 2, 3, 4, 5, 7].map(x => [x, x + ' ngày']), s.earlyDays ?? 3, { cls: 'narrow' })}
     ${fsel('Gửi hành trình GPS mỗi', 'trackSyncSec', [60, 120, 180, 300, 600].map(x => [x, x / 60 + ' phút']), s.trackSyncSec ?? 180, { cls: 'narrow', msg: 'Nhanh hơn = tốn hạn mức Google' })}
     ${fsel('Bắt buộc ảnh khi giao TC', 'requirePhoto', [['1', 'Có'], ['0', 'Không']], s.requirePhoto ? '1' : '0', { cls: 'narrow' })}
-    ${fsel('Chia việc theo tuyến', 'keepRoute', [['1', 'Ưu tiên cùng tuyến / tiện đường'], ['0', 'Chỉ theo khoảng cách']], s.keepRoute === false ? '0' : '1', { cls: 'narrow' })}${fsel('Tải trọng xe', 'useCapacity', [['1', 'Xe đầy thì tách thêm chuyến'], ['0', 'Không xét tải trọng']], s.useCapacity === false ? '0' : '1', { cls: 'narrow' })}
+    ${fsel('Gom đơn theo khu vực', 'keepRoute', [['1', 'Ưu tiên cùng quận/huyện, tỉnh'], ['0', 'Chỉ theo khoảng cách']], s.keepRoute === false ? '0' : '1', { cls: 'narrow' })}${fsel('Tải trọng xe', 'useCapacity', [['1', 'Xe đầy thì tách thêm chuyến'], ['0', 'Không xét tải trọng']], s.useCapacity === false ? '0' : '1', { cls: 'narrow' })}
   </div><div class="mt">${btn(`${ico('save')} Lưu thông số`, 'saveSettings', '', 'primary')}</div></div>
   ${cloudCard()}${retentionCard()}${versionCard()}
   <div class="card"><h3 class="mb">Xóa dữ liệu trên máy này</h3><p class="small muted">Xóa toàn bộ dữ liệu đang lưu trên thiết bị này (không ảnh hưởng dữ liệu đã đồng bộ lên Google Sheet / Drive). Nên sao lưu trước.</p>${btn('Xóa dữ liệu trên máy này', 'wipeDevice', '', 'danger')}</div>`;
@@ -239,7 +225,7 @@ async function adminLoad() {
   const avg = st.photos.n ? st.photos.bytes / st.photos.n : 150 * 1024;
   if (!$('#stor-box')) return;
   box.innerHTML = `${st.quota ? usageBar(st.usage || 0, st.quota, 'Bộ nhớ thiết bị (trình duyệt cấp cho app)') : ''}
-    <div class="split"><div>${tbl(['Dữ liệu trên máy này', ['Số mục', 'num'], ['Dung lượng', 'num']], [...Object.entries(st.colls).filter(([, c]) => c.n).map(([k, c]) => `<tr><td>${esc(({ users: 'Nhân sự', customers: 'Khách hàng', routes: 'Tuyến', vehicles: 'Xe', orders: 'Đơn giao', trips: 'Chuyến', logs: 'Nhật ký', settlements: 'Đối soát', settings: 'Cài đặt', tracks: 'Hành trình GPS' })[k] || k)}</td><td class="num">${num(c.n, 0)}</td><td class="num">${bytesTxt(c.bytes)}</td></tr>`), `<tr><td><b>Ảnh giao hàng</b></td><td class="num">${num(st.photos.n, 0)}</td><td class="num">${bytesTxt(st.photos.bytes)}</td></tr>`, `<tr><td><b>Tổng cộng</b></td><td></td><td class="num"><b>${bytesTxt(tot + st.photos.bytes)}</b></td></tr>`])}</div>
+    <div class="split"><div>${tbl(['Dữ liệu trên máy này', ['Số mục', 'num'], ['Dung lượng', 'num']], [...Object.entries(st.colls).filter(([, c]) => c.n).map(([k, c]) => `<tr><td>${esc(({ users: 'Nhân sự', customers: 'Khách hàng', routes: 'Tuyến (cũ, không dùng)', vehicles: 'Xe', orders: 'Đơn giao', trips: 'Chuyến', logs: 'Nhật ký', settlements: 'Đối soát', settings: 'Cài đặt', tracks: 'Hành trình GPS' })[k] || k)}</td><td class="num">${num(c.n, 0)}</td><td class="num">${bytesTxt(c.bytes)}</td></tr>`), `<tr><td><b>Ảnh giao hàng</b></td><td class="num">${num(st.photos.n, 0)}</td><td class="num">${bytesTxt(st.photos.bytes)}</td></tr>`, `<tr><td><b>Tổng cộng</b></td><td></td><td class="num"><b>${bytesTxt(tot + st.photos.bytes)}</b></td></tr>`])}</div>
       <div><div class="card" style="box-shadow:none"><b>Ước tính tốc độ tăng</b><ul class="list-mini"><li><span>Ảnh trung bình</span><b>${bytesTxt(avg)}</b></li><li><span>Số ảnh mỗi ngày (30 ngày gần nhất)</span><b>${num(photoDay, 0)}</b></li><li><span>Dung lượng ảnh mỗi tháng</span><b>${bytesTxt(photoDay * 30 * avg)}</b></li><li><span>Giữ ${S().retentionMonths || 3} tháng trên app</span><b>${bytesTxt(photoDay * 30 * (S().retentionMonths || 3) * avg)}</b></li></ul></div></div></div>
     <div class="rw center mt">${Cloud.enabled() ? btn(`${ico('cloud', 16)} Kiểm tra dung lượng Google Sheet / Drive`, 'cloudStats', '', 'secondary') : '<span class="small muted">Bật đồng bộ đám mây để xem dung lượng Google Sheet / Drive.</span>'}</div><div id="cloud-stats" class="mt"></div>
     <details class="mt"><summary class="bold">Hướng dẫn nâng cấp dung lượng</summary><div class="small mt">
@@ -284,8 +270,8 @@ CHG.restoreFile = async el => {
   } catch (e) { toast('Không khôi phục được: ' + e.message, 5000); }
 };
 ACT.reseed = async () => {
-  if (!confirm('Nạp lại danh mục khách hàng, địa chỉ và tuyến từ dữ liệu mẫu (data/seed.json)?\nĐơn, chuyến, SĐT/ghi chú và tọa độ chính xác của khách được giữ nguyên.')) return;
-  try { const r = await seedCatalog(); log('Nạp lại danh mục', 'seed.json', `${r.customers} khách, ${r.routes} tuyến`); toast(`Đã nạp ${num(r.customers, 0)} khách hàng, ${num(r.routes, 0)} tuyến`); renderView(); } catch (e) { toast(e.message, 5000); }
+  if (!confirm('Nạp lại danh mục khách hàng và địa chỉ từ dữ liệu mẫu (data/seed.json)?\nĐơn, chuyến, SĐT/ghi chú và tọa độ chính xác của khách được giữ nguyên.')) return;
+  try { const r = await seedCatalog(); log('Nạp lại danh mục', 'seed.json', `${r.customers} khách`); toast(`Đã nạp ${num(r.customers, 0)} khách hàng`); renderView(); } catch (e) { toast(e.message, 5000); }
 };
 ACT.wipeDevice = async () => {
   if (!confirm('Xóa TOÀN BỘ dữ liệu trên máy này?')) return;
@@ -317,7 +303,7 @@ function retentionCard() {
   const s = S(), m = s.retentionMonths || 3, cut = retentionCutoff(m), st = oldDataStats(cut), total = st.orders + st.trips + st.settlements + st.logs + st.tracks;
   return `<div class="card"><h3 class="mb">Thời hạn lưu trữ dữ liệu trên app</h3>
     <div class="rw">${fsel('Chỉ giữ dữ liệu giao hàng trong', 'retentionMonths', [1, 2, 3, 6, 12].map(x => [x, x + ' tháng gần nhất']), m, { cls: 'narrow', attrs: 'data-chg="retMonths"' })}
-      <div class="grow small muted" style="align-self:flex-end">Áp dụng cho đơn giao, chuyến, ảnh, đối soát, nhật ký, hành trình GPS. Danh mục (khách hàng, tuyến, xe, nhân sự) luôn được giữ.</div></div>
+      <div class="grow small muted" style="align-self:flex-end">Áp dụng cho đơn giao, chuyến, ảnh, đối soát, nhật ký, hành trình GPS. Danh mục (khách hàng, xe, nhân sự) luôn được giữ.</div></div>
     <ul class="list-mini mt">
       <li><span>Mốc giữ lại</span><b>từ ${fmtD(cut)} đến nay</b></li>
       <li><span>Dữ liệu cũ hơn mốc (trên máy này)</span><b>${num(st.orders, 0)} đơn · ${num(st.photos, 0)} ảnh · ${num(st.trips, 0)} chuyến · ${num(st.logs, 0)} nhật ký</b></li>

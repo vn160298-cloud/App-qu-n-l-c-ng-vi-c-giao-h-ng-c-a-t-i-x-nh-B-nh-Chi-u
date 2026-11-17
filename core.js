@@ -7,7 +7,7 @@
    ===================================================================== */
 
 const APP_NAME = 'App quản lý công việc giao hàng của tài xế nhà Bình Chiểu';
-const APP_VERSION = '2.0.0';   // đổi cùng version.json mỗi lần phát hành
+const APP_VERSION = '2.0.1';   // đổi cùng version.json mỗi lần phát hành
 const SCHEMA_VERSION = 2;      // tăng khi đổi cấu trúc dữ liệu → tự chạy migrate()
 
 const ROLES = { admin: 'Quản trị (Admin)', dieuphoi: 'Điều phối', taixe: 'Tài xế', ketoan: 'Kế toán / Đối soát' };
@@ -230,7 +230,7 @@ function buildCustomer(c, addrs, prev) {
   const g = guessGeo(c.ad, provinceOfRoute(c.rt) || undefined);
   const r = Object.assign({}, prev, {
     id: c.c, code: c.c, name: c.n, alias: c.al || '', channel: c.ch || '', chain: c.chain || '', address: c.ad || '',
-    addresses: (addrs || []).map(a => ({ code: a[1], address: a[2] })), route: c.rt || '', area: c.ar || '', region: c.rg || '',
+    addresses: (addrs || []).map(a => ({ code: a[1], address: a[2] })), area: c.ar || '', region: c.rg || '',
     slaDays: c.sla ?? null, province: g?.province || provinceOfRoute(c.rt) || '', district: g?.district || '',
   });
   // chỉ gán tọa độ ước lượng nếu chưa có tọa độ chính xác (GPS / nhập tay)
@@ -240,9 +240,8 @@ function buildCustomer(c, addrs, prev) {
 async function seedCatalog() {
   const seed = await fetch('data/seed.json', { cache: 'no-cache' }).then(r => { if (!r.ok) throw new Error('Không tải được data/seed.json'); return r.json(); });
   const byCust = {}; seed.addresses.forEach(a => (byCust[a[0]] = byCust[a[0]] || []).push(a));
-  seed.routes.forEach(r => upsert('routes', Object.assign({}, byId('routes', r.code), { id: r.code, code: r.code, name: r.code, province: provinceOfRoute(r.code), area: r.ar || '', region: r.rg || '' })));
   seed.customers.forEach(c => upsert('customers', buildCustomer(c, byCust[c.c], byId('customers', c.c))));
-  return { customers: seed.customers.length, routes: seed.routes.length };
+  return { customers: seed.customers.length };
 }
 const DEMO = { users: ['DP01', 'KT01', 'TX01', 'TX02', 'TX03', 'TX04'], routes: ['T1', 'T2', 'T3', 'T4'], vehicles: ['51C-123.45', '51C-234.56', '51D-345.67', '59-X1 456.78'] };
 function dropDemoData() {
@@ -441,11 +440,11 @@ const tripTrack = code => DB.tracks.filter(x => x.trip === code).sort((a, b) => 
      đoạn còn lại tính tốc độ liên tỉnh.
    - Tuyến: khách hẹn sáng trước, chiều sau; trong mỗi buổi dùng gần nhất + 2-opt;
      khách nhận cả ngày chèn vào chỗ ít tốn đường nhất.
-   - Chia việc: gom đơn cùng tuyến / tiện đường thành cụm, giao nguyên cụm cho 1 tài xế,
+   - Chia việc: gom đơn cùng khu vực (quận/huyện, tỉnh) / tiện đường thành cụm, giao nguyên cụm cho 1 tài xế,
      tìm kiếm cục bộ để tổng thời gian cả ngày của các tài xế gần bằng nhau.
    - Tải trọng: xe đầy thì tách thành nhiều chuyến (về kho lấy hàng rồi đi tiếp).
    - Nhiều ngày: đơn sắp hết hạn giao thì giao trước; đơn khác hạn có thể giao sớm
-     nếu cùng tuyến / tiện đường.
+     nếu cùng khu vực / tiện đường.
    ===================================================================== */
 const depotPt = () => S().depot;
 const hasXY = p => p && p.lat != null && p.lng != null && p.lat !== '' && p.lng !== '';
@@ -546,9 +545,9 @@ function splitByCapacity(orders, cap, fast = true) {
 }
 const dayMinutes = (orders, cap) => splitByCapacity(orders, cap).reduce((s, ch) => s + tourMinutes(ch), 0);
 
-/* ---------- Cụm cùng tuyến / tiện đường ---------- */
-// Khóa cụm: mã tuyến chính thức → quận/huyện → tỉnh. Đơn không rõ thì nhập vào cụm gần nhất (≤ 3 km, tọa độ chính xác)
-const clusterKey = o => o.route || (o.province ? (o.district ? `${o.province}/${o.district}` : o.province) : '');
+/* ---------- Cụm cùng khu vực (quận/huyện, tỉnh) / tiện đường ---------- */
+// Khóa cụm: quận/huyện → tỉnh. Đơn không rõ thì nhập vào cụm gần nhất (≤ 3 km, tọa độ chính xác)
+const clusterKey = o => o.province ? (o.district ? `${o.province}/${o.district}` : o.province) : '';
 function buildClusters(orders) {
   if (S().keepRoute === false) return orders.map(o => [o]);
   const by = {}, loose = [];
@@ -596,7 +595,7 @@ function balanceOrders(orders, driverIds, baseline = {}) {
 
 /* ---------- Giao việc nhiều ngày + giao sớm ---------- */
 // Đơn "phải giao hôm nay" = nếu để sang ngày được chọn kế tiếp sẽ trễ hạn giao.
-// Đơn có hạn giao muộn hơn có thể giao sớm (tối đa earlyDays ngày) nếu cùng tuyến / tiện đường.
+// Đơn có hạn giao muộn hơn có thể giao sớm (tối đa earlyDays ngày) nếu cùng khu vực / tiện đường.
 function planDays(orders, days, driverIds, opts = {}) {
   const early = opts.earlyDays ?? S().earlyDays ?? 0;
   days = [...days].sort(); const out = [];
@@ -689,7 +688,7 @@ function insertionOptions(o) {
      với cột chuẩn hóa + DATA_JSON; ảnh lưu Google Drive, link ở sheet ANH.
    • Supabase (bảng bc_records, file supabase-schema.sql).
    ===================================================================== */
-const SHEET_NAMES = { settings: 'CAI_DAT', photos: 'ANH', tracks: 'HANH_TRINH' };
+const SHEET_NAMES = { settings: 'CAI_DAT', photos: 'ANH', tracks: 'HANH_TRINH', routes: 'TUYEN' };
 const sheetName = coll => (XL[coll] && XL[coll].sheet) || SHEET_NAMES[coll] || coll.toUpperCase();
 function sheetView(coll, rec) {
   if (rec._deleted || coll === 'photos') return {};
@@ -884,7 +883,7 @@ const XL = {
   orders: { sheet: 'DON_HANG', cols: [
     ['code', 'MA_DON', 'Mã đơn duy nhất (MÃ ĐƠN HÀNG XUẤT)'], ['refNo', 'SO_DON_XUAT', 'Số đơn hàng xuất'], ['orderDate', 'NGAY_TAO_DON', 'Ngày đặt hàng (yyyy-mm-dd)'],
     ['dueDate', 'HAN_GIAO', 'Hạn giao = ngày đặt + hạn mức giao của khách'], ['date', 'NGAY_GIAO', 'Ngày giao theo kế hoạch'], ['shipDate', 'NGAY_XUAT_HANG', 'Ngày xuất hàng thực tế'],
-    ['customerCode', 'MA_KH', 'Mã khách hàng'], ['customerName', 'TEN_KH', ''], ['phone', 'SDT', ''], ['address', 'DIA_CHI', ''], ['province', 'TINH', ''], ['route', 'MA_TUYEN', ''],
+    ['customerCode', 'MA_KH', 'Mã khách hàng'], ['customerName', 'TEN_KH', ''], ['phone', 'SDT', ''], ['address', 'DIA_CHI', ''], ['province', 'TINH', ''], ['district', 'QUAN_HUYEN', ''],
     ['timeWindow', 'KHUNG_GIO', 'Trong giờ hành chính'], ['cartons', 'SO_THUNG', 'Số lượng thùng'], ['weightKg', 'KHOI_LUONG_KG', 'Số, dấu chấm là thập phân khi nhập'],
     ['noEarly', 'KHONG_GIAO_SOM', 'Có = không giao trước hạn'], ['status', 'TRANG_THAI', Object.keys(OST).join(' | ')],
     ['driverId', 'MA_TAI_XE', ''], ['tripCode', 'MA_CHUYEN', ''], ['seq', 'THU_TU', ''], ['eta', 'GIO_DU_KIEN', ''],
@@ -898,10 +897,9 @@ const XL = {
     ['tDepart', 'GIO_BAT_DAU_DI_CHUYEN', ''], ['tReturn', 'GIO_VE_KHO', ''] ] },
   customers: { sheet: 'KHACH_HANG', cols: [
     ['code', 'MA_KH', 'Bắt buộc, duy nhất'], ['name', 'TEN_KH', ''], ['channel', 'KENH', 'Kênh bán hàng'], ['chain', 'CHUOI', ''], ['phone', 'SDT', ''], ['address', 'DIA_CHI', ''],
-    ['province', 'TINH', ''], ['district', 'QUAN_HUYEN', ''], ['area', 'KHU_VUC', ''], ['region', 'VUNG_MIEN', ''], ['route', 'MA_TUYEN', ''],
+    ['province', 'TINH', ''], ['district', 'QUAN_HUYEN', ''], ['area', 'KHU_VUC', ''], ['region', 'VUNG_MIEN', ''],
     ['slaDays', 'HAN_MUC_NGAY', 'Hạn mức giao hàng (ngày)'], ['serviceMin', 'PHUT_GIAO_TAI_DIEM', ''], ['lat', 'VI_DO', ''], ['lng', 'KINH_DO', ''], ['geoSrc', 'NGUON_TOA_DO', 'gps | manual | quan | tinh'], ['note', 'GHI_CHU', '']] },
   addresses: { sheet: 'DIA_CHI_GIAO', cols: [['code', 'MA_DIA_CHI', ''], ['customerCode', 'MA_KH', ''], ['customerName', 'TEN_KH', ''], ['address', 'DIA_CHI_GIAO_HANG', '']] },
-  routes: { sheet: 'TUYEN', cols: [['code', 'MA_TUYEN', ''], ['name', 'TEN_TUYEN', ''], ['province', 'TINH', ''], ['area', 'KHU_VUC', ''], ['region', 'VUNG_MIEN', '']] },
   vehicles: { sheet: 'XE', cols: [['plate', 'BIEN_SO', ''], ['type', 'LOAI_XE', ''], ['capacityKg', 'TAI_TRONG_KG', '']] },
   users: { sheet: 'NHAN_SU', cols: [['id', 'MA_NV', ''], ['name', 'HO_TEN', ''], ['role', 'VAI_TRO', Object.keys(ROLES).join(' | ')], ['plant', 'NHA_MAY', ''], ['dept', 'BO_PHAN', ''], ['phone', 'SDT', ''], ['vehicle', 'XE_MAC_DINH', ''], ['active', 'HOAT_DONG', '']] },
   settlements: { sheet: 'DOI_SOAT', cols: [['date', 'NGAY', ''], ['driverId', 'MA_TAI_XE', ''], ['orders', 'SO_DON', ''], ['ok', 'GIAO_TC', ''], ['fail', 'KHONG_GIAO', ''], ['cartons', 'SO_THUNG_GIAO', ''], ['kg', 'KG_GIAO', ''], ['onTimePct', 'DUNG_HAN_PCT', ''], ['by', 'NGUOI_XAC_NHAN', ''], ['at', 'GIO_XAC_NHAN', ''], ['note', 'GHI_CHU', '']] },
@@ -1011,7 +1009,7 @@ function buildOrderFromRow(r, idx) {
   return { order: o, customer: c };
 }
 function orderFromCustomer(o, c) {
-  Object.assign(o, { customerCode: c.code, customerName: c.name, phone: c.phone || '', address: c.address, route: c.route || '', province: c.province || '', district: c.district || '',
+  Object.assign(o, { customerCode: c.code, customerName: c.name, phone: c.phone || '', address: c.address, province: c.province || '', district: c.district || '',
     serviceMin: Number(c.serviceMin) || S()?.defaultServiceMin || 10, lat: c.lat ?? null, lng: c.lng ?? null, geoSrc: c.geoSrc || '' });
   o.timeWindow = o.timeWindow || OFFICE;
   if (!o.dueDate && o.orderDate) o.dueDate = addDays(o.orderDate, c.slaDays ?? S()?.defaultSlaDays ?? 3);

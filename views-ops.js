@@ -3,7 +3,6 @@
    views-ops.js — Tổng quan, Đơn giao (nhập Excel), Giao việc nhiều ngày, Chuyến giao
    ===================================================================== */
 const driverOpts = (all = false) => drivers(all).map(u => [u.id, `${u.name} (${u.id})`]);
-const routeOpts = () => DB.routes.map(r => [r.code, r.code]).sort((a, b) => a[0].localeCompare(b[0], 'vi'));
 const vehicleOpts = () => DB.vehicles.map(v => [v.plate, `${v.plate}${v.type ? ' · ' + v.type : ''}`]);
 const provOpts = () => provinceNames().map(p => [p, p]);
 const dayChips = (a, b) => { const r = []; for (let d = a, i = 0; d <= b && i < 21; d = addDays(d, 1), i++) r.push(d); return r; };
@@ -24,7 +23,7 @@ function vDash() {
   return `
   ${pageTitle('Tổng quan giao hàng', can('map') ? btn(`${ico('map')} Theo dõi bản đồ`, 'tab', 'map', 'secondary') : '')}
   ${MIGRATION && !localStorage.getItem('bc_mig_' + MIGRATION.to) ? alertBox('success', `Đã nâng cấp app lên phiên bản ${APP_VERSION}`, `Dữ liệu của bạn được giữ nguyên${MIGRATION.demo ? `; đã gỡ ${num(MIGRATION.demo, 0)} mục dữ liệu mẫu cũ` : ''}${MIGRATION.orders ? `; chuyển ${num(MIGRATION.orders, 0)} đơn sang cấu trúc mới (bỏ thu hộ / hàng hóa, thêm hạn giao)` : ''}${MIGRATION.customers ? `; nạp ${num(MIGRATION.customers, 0)} khách hàng từ file mẫu` : ''}.`, btn('Đã hiểu', 'migOk', '', 'secondary', 'sm')) : ''}
-  ${!DB.customers.length && can('catalog.edit') ? alertBox('warning', 'Chưa có danh mục khách hàng', 'Vào Excel In/Out → “Nhập danh mục khách hàng / địa chỉ giao” và chọn 2 file Excel (hạn mức giao hàng, địa chỉ giao hàng) để nạp khách hàng, tuyến và hạn mức giao.', btn('Mở Excel In/Out', 'tab', 'data', 'primary', 'sm')) : ''}
+  ${!DB.customers.length && can('catalog.edit') ? alertBox('warning', 'Chưa có danh mục khách hàng', 'Vào Excel In/Out → “Nhập danh mục khách hàng / địa chỉ giao” và chọn 2 file Excel (hạn mức giao hàng, địa chỉ giao hàng) để nạp khách hàng, địa chỉ giao và hạn mức giao.', btn('Mở Excel In/Out', 'tab', 'data', 'primary', 'sm')) : ''}
   ${STATE.defPin ? alertBox('warning', 'Bạn đang dùng PIN mặc định', 'Hãy đổi PIN để bảo vệ tài khoản.', btn('Đổi PIN', 'userMenu', '', 'secondary', 'sm')) : ''}
   ${ret}
   ${waitAdmin && isAdmin() ? alertBox('warning', `${num(waitAdmin, 0)} đơn đang chờ bạn xác nhận cuối cùng`, 'Admin là người xác nhận kết quả giao.', btn('Mở trang Duyệt', 'tab', 'review', 'primary', 'sm')) : ''}
@@ -86,7 +85,7 @@ function filteredOrders() {
   const f = STATE.f, q = vnorm(f.q || ''), df = f.df || 'date';
   return DB.orders.filter(o =>
     (f.allDates === '1' || inRange(o[df])) &&
-    (!f.status || o.status === f.status) && (!f.driver || o.driverId === f.driver) && (!f.route || o.route === f.route) && (!f.prov || o.province === f.prov) &&
+    (!f.status || o.status === f.status) && (!f.driver || o.driverId === f.driver) && (!f.prov || o.province === f.prov) &&
     (!f.late || (!isDone(o) && o.dueDate && o.dueDate < today())) &&
     (!q || vnorm([o.code, o.refNo, o.customerName, o.customerCode, o.address, o.phone, o.tripCode, o.province].join(' ')).includes(q))
   ).sort((a, b) => (a.dueDate || a.date).localeCompare(b.dueDate || b.date) || a.code.localeCompare(b.code));
@@ -102,13 +101,12 @@ function vOrders() {
     ${fsel('Trạng thái', 'status', Object.entries(OST).map(([k, v]) => [k, v[0]]), f.status, { empty: 'Tất cả', cls: 'narrow', attrs: 'data-chg="f"' })}
     ${fsel('Tài xế', 'driver', driverOpts(true), f.driver, { empty: 'Tất cả', cls: 'narrow', attrs: 'data-chg="f"' })}
     ${fsel('Tỉnh', 'prov', provOpts(), f.prov, { empty: 'Tất cả tỉnh', cls: 'narrow', attrs: 'data-chg="f"' })}
-    ${fsel('Tuyến', 'route', routeOpts(), f.route, { empty: 'Tất cả tuyến', cls: 'narrow', attrs: 'data-chg="f"' })}
     ${fsel('Hạn giao', 'late', [['1', 'Quá hạn chưa giao']], f.late, { empty: 'Tất cả', cls: 'narrow', attrs: 'data-chg="f"' })}
     ${fld('Tìm kiếm', 'q', f.q || '', { cls: 'grow', ph: 'Mã đơn, khách, địa chỉ, SĐT…', attrs: 'data-inp="1"' })}</div>
   <p class="small muted mb">${num(os.length, 0)} đơn · ${num(os.reduce((s, o) => s + cartonsOf(o), 0), 0)} thùng · ${kgTxt(os.reduce((s, o) => s + kgOf(o), 0))}</p>
-  ${tbl(['Mã đơn', 'Ngày tạo', 'Hạn giao', 'Ngày giao', 'Khách hàng', 'Tỉnh · Tuyến', ['Thùng', 'num'], ['Kg', 'num'], 'Tài xế', 'Chuyến', 'Trạng thái'], os.slice(pg.from, pg.to).map(o => `<tr class="click" data-act="openOrder" data-id="${esc(o.code)}">
+  ${tbl(['Mã đơn', 'Ngày tạo', 'Hạn giao', 'Ngày giao', 'Khách hàng', 'Tỉnh · Quận/huyện', ['Thùng', 'num'], ['Kg', 'num'], 'Tài xế', 'Chuyến', 'Trạng thái'], os.slice(pg.from, pg.to).map(o => `<tr class="click" data-act="openOrder" data-id="${esc(o.code)}">
     <td class="nn-mono">${esc(o.code)}</td><td>${fmtD(o.orderDate)}</td><td class="nowrap">${fmtD(o.dueDate)}<div>${dueTag(o)}</div></td><td>${fmtD(o.date)}${o.date < (o.dueDate || o.date) ? '<div class="small muted">giao sớm</div>' : ''}</td>
-    <td class="wrap">${esc(o.customerName)}<div class="small muted nn-mono">${esc(o.customerCode || 'chưa có trong danh mục')}</div></td><td>${esc(o.province || '')}<div class="small muted">${esc(o.route || '')}</div></td>
+    <td class="wrap">${esc(o.customerName)}<div class="small muted nn-mono">${esc(o.customerCode || 'chưa có trong danh mục')}</div></td><td>${esc(o.province || '')}<div class="small muted">${esc(o.district || '')}</div></td>
     <td class="num">${num(cartonsOf(o), 0)}</td><td class="num">${num(kgOf(o), 1)}</td><td>${esc(userName(o.driverId))}</td><td class="nn-mono">${esc(o.tripCode || '—')}</td><td>${badge(OST, o.status)}</td></tr>`), { empty: 'Không có đơn nào phù hợp bộ lọc. Bấm “Nhập đơn từ Excel” để thêm đơn.' })}
   ${pg.html}`;
 }
@@ -130,7 +128,7 @@ function orderForm(o) {
     ${fld('Tên khách hàng', 'customerName', o.customerName || '', { required: true })}${fld('SĐT', 'phone', o.phone || '', { type: 'tel', cls: 'narrow' })}
     ${fld('Địa chỉ giao', 'address', o.address || '', { cls: 'full', list: 'dl-addr', msg: c && (c.addresses || []).length > 1 ? `Khách có ${c.addresses.length} địa chỉ giao – bấm ô để chọn` : '' })}
     <datalist id="dl-addr">${(c?.addresses || []).map(a => `<option value="${esc(a.address)}">${esc(a.code)}</option>`).join('')}</datalist>
-    ${fsel('Tỉnh', 'province', provOpts(), o.province, { empty: '—', cls: 'narrow' })}${fsel('Tuyến', 'route', routeOpts(), o.route, { empty: '—', cls: 'narrow' })}
+    ${fsel('Tỉnh', 'province', provOpts(), o.province, { empty: '—', cls: 'narrow' })}
     ${fsel('Khung giờ nhận (trong giờ hành chính)', 'timeWindow', TIME_WINDOWS.map(x => [x, x]), o.timeWindow || OFFICE, { cls: 'narrow' })}
     ${fld('Thời gian giao tại điểm', 'serviceMin', o.serviceMin ?? '', { fmt: true, unit: 'phút', cls: 'narrow' })}
     ${fld('Số thùng', 'cartons', o.cartons ?? '', { fmt: true, unit: 'thùng', cls: 'narrow' })}${fld('Khối lượng', 'weightKg', o.weightKg ?? '', { fmt: true, unit: 'kg', cls: 'narrow' })}
@@ -155,10 +153,10 @@ function recalcDue(c) {
 ACT.pickCust = code => {
   const c = custOf(code), f = $('#of'); if (!c || !f) return;
   f.querySelector('[data-custsearch]').value = `${c.code} – ${c.name}`; $('#cp-list').hidden = true; setF('customerCode', c.code);
-  setF('customerName', c.name); setF('phone', c.phone); setF('address', c.address); setF('route', c.route); setF('province', c.province);
+  setF('customerName', c.name); setF('phone', c.phone); setF('address', c.address); setF('province', c.province);
   setF('serviceMin', c.serviceMin || S().defaultServiceMin); setF('lat', c.lat); setF('lng', c.lng); setF('geoSrc', c.geoSrc); setF('addrCode', (c.addresses || [])[0]?.code || '');
   $('#dl-addr').innerHTML = (c.addresses || []).map(a => `<option value="${esc(a.address)}">${esc(a.code)}</option>`).join('');
-  recalcDue(c); toast(`Đã điền: ${c.name}${c.route ? ' · tuyến ' + c.route : ''}${c.slaDays != null ? ' · hạn mức ' + c.slaDays + ' ngày' : ''}`);
+  recalcDue(c); toast(`Đã điền: ${c.name}${c.province ? ' · ' + c.province : ''}${c.slaDays != null ? ' · hạn mức ' + c.slaDays + ' ngày' : ''}`);
 };
 CHG.ofOrderDate = () => { const c = custOf($('#of [name=customerCode]').value); recalcDue(c); };
 CHG.ofDue = () => { const f = $('#of'); f.dataset.dueManual = 1; if (!f.dataset.dateManual) setF('date', f.querySelector('[name=dueDate]').value); };
@@ -176,7 +174,7 @@ ACT.saveOrder = id => {
   const oldTrip = o.tripCode, oldDriver = o.driverId;
   const due = d.dueDate || addDays(d.orderDate, S().defaultSlaDays || 3);
   Object.assign(o, { refNo: d.refNo, orderDate: d.orderDate, dueDate: due, date: d.date || due, customerCode: d.customerCode, customerName: d.customerName, phone: d.phone, address: d.address, addrCode: d.addrCode,
-    province: d.province, route: d.route, timeWindow: d.timeWindow, serviceMin: parseVN(d.serviceMin), cartons: parseVN(d.cartons) || 0, weightKg: parseVN(d.weightKg) || 0, noEarly: !!d.noEarly, note: d.note,
+    province: d.province, timeWindow: d.timeWindow, serviceMin: parseVN(d.serviceMin), cartons: parseVN(d.cartons) || 0, weightKg: parseVN(d.weightKg) || 0, noEarly: !!d.noEarly, note: d.note,
     lat: parseGeo(d.lat), lng: parseGeo(d.lng), geoSrc: d.geoSrc });
   if (o.lat == null && o.address) { const g = guessGeo(o.address, o.province); if (g) { o.lat = g.lat; o.lng = g.lng; o.geoSrc = g.src; o.province = o.province || g.province; o.district = g.district; } }
   if (d.driverId) assignOrder(o, d.driverId, d.tripCode);
@@ -225,7 +223,7 @@ ACT.openOrder = id => {
         <li><span>Khách hàng</span><b>${esc(o.customerName)} ${o.customerCode ? `<span class="nn-mono">(${esc(o.customerCode)})</span>` : ''}</b></li>
         <li><span>SĐT</span><span>${o.phone ? `<a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>` : '—'}</span></li>
         <li><span>Địa chỉ</span><span>${esc(o.address)}</span></li>
-        <li><span>Tỉnh · Tuyến</span><span>${esc(o.province || '—')} · ${esc(o.route || '—')}</span></li>
+        <li><span>Tỉnh · Quận/huyện</span><span>${esc(o.province || '—')} · ${esc(o.district || '—')}</span></li>
         <li><span>Ngày tạo đơn</span><b>${fmtD(o.orderDate)}</b></li>
         <li><span>Hạn giao</span><b>${fmtD(o.dueDate)}</b></li>
         <li><span>Ngày giao kế hoạch</span><span>${fmtD(o.date)}${o.date < (o.dueDate || o.date) ? ' (giao sớm)' : ''}</span></li>
@@ -325,7 +323,7 @@ ACT.doImport = () => {
     let cust = c;
     if (!cust && opt.newCust) {
       const g = guessGeo(r.address || r.customerName), code = nextNewCustomerCode();
-      cust = upsert('customers', { id: code, code, name: r.customerName, alias: '', channel: '', chain: '', address: r.address || '', addresses: r.address ? [{ code: r.addrCode || code + '_S01', address: r.address }] : [], route: '', area: '', region: '',
+      cust = upsert('customers', { id: code, code, name: r.customerName, alias: '', channel: '', chain: '', address: r.address || '', addresses: r.address ? [{ code: r.addrCode || code + '_S01', address: r.address }] : [], area: '', region: '',
         slaDays: null, province: g?.province || '', district: g?.district || '', lat: g?.lat ?? null, lng: g?.lng ?? null, geoSrc: g?.src || '', phone: '', note: 'Tạo tự động khi nhập đơn – bổ sung địa chỉ, tuyến' });
       idx.exact.set(vnorm(r.customerName), cust); newC++;
       const keepAddr = r.address; orderFromCustomer(o, cust); if (keepAddr) o.address = keepAddr;
@@ -350,7 +348,7 @@ ACT.doImport = () => {
 };
 
 /* =====================================================================
-   GIAO VIỆC — nhiều ngày, giao sớm, chia đều thời gian, gom cùng tuyến, tải trọng xe
+   GIAO VIỆC — nhiều ngày, giao sớm, chia đều thời gian, gom cùng khu vực, tải trọng xe
    ===================================================================== */
 function asgState() {
   const f = STATE.f;
@@ -364,7 +362,7 @@ function vAssign() {
   const early = f.early ?? String(S().earlyDays ?? 3), last = days[days.length - 1] || f.to;
   const limit = addDays(last, Number(early));
   const all = DB.orders.filter(o => o.status === 'cho_phan_cong');
-  const pool = all.filter(o => (o.dueDate || o.date) <= limit && (!f.prov || o.province === f.prov) && (!f.q || vnorm(`${o.code} ${o.customerName} ${o.province} ${o.route}`).includes(vnorm(f.q))))
+  const pool = all.filter(o => (o.dueDate || o.date) <= limit && (!f.prov || o.province === f.prov) && (!f.q || vnorm(`${o.code} ${o.customerName} ${o.province} ${o.district || ""}`).includes(vnorm(f.q))))
     .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '') || (a.province || '').localeCompare(b.province || '', 'vi'));
   const sel = f.pick || (f.pick = {}); pool.forEach(o => { if (!(o.code in sel)) sel[o.code] = true; });
   const drs = f.drs || (f.drs = Object.fromEntries(drivers().map(u => [u.id, true])));
@@ -372,19 +370,19 @@ function vAssign() {
   const picked = pool.filter(o => sel[o.code]);
   return `
   ${pageTitle('Giao việc & chia đều thời gian')}
-  ${alertBox('info', 'Cách app chia việc', `Chọn <b>một hoặc nhiều ngày xuất phát</b>. Đơn sắp hết hạn giao được giao trước; đơn có hạn muộn hơn <b>giao sớm</b> (tối đa ${early} ngày) nếu <b>cùng tuyến / tiện đường</b>. Mỗi tài xế chạy theo cung đường tốt nhất, xe đầy (${S().useCapacity !== false ? 'theo tải trọng' : 'không xét tải'}) thì tách chuyến 2, 3…; tổng thời gian cả ngày của các tài xế gần bằng nhau.`)}
+  ${alertBox('info', 'Cách app chia việc', `Chọn <b>một hoặc nhiều ngày xuất phát</b>. Đơn sắp hết hạn giao được giao trước; đơn có hạn muộn hơn <b>giao sớm</b> (tối đa ${early} ngày) nếu <b>cùng khu vực (quận/huyện, tỉnh) / tiện đường</b>. Mỗi tài xế chạy theo cung đường tốt nhất, xe đầy (${S().useCapacity !== false ? 'theo tải trọng' : 'không xét tải'}) thì tách chuyến 2, 3…; tổng thời gian cả ngày của các tài xế gần bằng nhau.`)}
   ${all.length && DB.trips.some(t => !['hoan_thanh', 'huy'].includes(t.status)) ? mergeCard(all.filter(o => days.includes(o.date) || o.date <= (days[0] || today())).slice(0, 20)) : ''}
   <div class="card mb"><h3 class="mb">1. Chọn ngày xuất phát</h3>
     <div class="rw">${fld('Từ ngày', 'from', f.from, { type: 'date', cls: 'narrow', attrs: 'data-chg="asgDate"' })}${fld('Đến ngày', 'to', f.to, { type: 'date', cls: 'narrow', attrs: 'data-chg="asgDate"' })}
       ${fsel('Giờ xuất phát', 'start', START_TIMES.map(x => [x, x]), start, { cls: 'narrow', attrs: 'data-chg="f"' })}
       ${fsel('Cho phép giao sớm', 'early', [0, 1, 2, 3, 4, 5, 7].map(x => [String(x), x ? `Tối đa ${x} ngày trước hạn` : 'Không giao sớm']), early, { cls: 'narrow', attrs: 'data-chg="asgEarly"' })}</div>
     <div class="mt"><div class="nn-label mb">Các ngày sẽ giao (bỏ chọn ngày nghỉ)</div><div class="rw center">${chips.map(d => `<label class="check"><input type="checkbox" data-chg="dayPick" value="${d}" ${f.days[d] ? 'checked' : ''}><span class="${wday(d) === 'CN' ? 'nn-tone-danger' : ''}">${wday(d)} ${fmtD(d).slice(0, 5)}</span></label>`).join('')}</div></div>
-    <label class="check mt"><input type="checkbox" data-chg="asgAny" ${f.any ? 'checked' : ''}> Giao sớm cả đơn khác tuyến (mặc định chỉ giao sớm đơn cùng tuyến / tiện đường)</label>
+    <label class="check mt"><input type="checkbox" data-chg="asgAny" ${f.any ? 'checked' : ''}> Giao sớm cả đơn khác khu vực (mặc định chỉ giao sớm đơn cùng khu vực / tiện đường)</label>
     <label class="check"><input type="checkbox" data-chg="asgFar" ${f.farAll ? 'checked' : ''}> Xếp cả đơn ở xa kho hơn ${num(S().maxDayKm ?? 250, 0)} km (mặc định để riêng vì không giao kịp trong ngày)</label></div>
   <div class="split">
     <div class="card"><div class="rw sb center mb"><h3>2. Đơn chờ phân công (${num(picked.length, 0)}/${num(pool.length, 0)})</h3><span>${btn('Chọn hết', 'pickAll', '1', 'secondary', 'sm')} ${btn('Bỏ hết', 'pickAll', '', 'secondary', 'sm')}</span></div>
       <div class="filters" style="margin-bottom:var(--space-2)">${fsel('Tỉnh', 'prov', provOpts(), f.prov, { empty: 'Tất cả', cls: 'narrow', attrs: 'data-chg="f"' })}${fld('Tìm', 'q', f.q || '', { cls: 'narrow', attrs: 'data-inp="1"' })}</div>
-      <div style="max-height:360px;overflow:auto">${pool.length ? pool.map(o => `<label class="check"><input type="checkbox" data-chg="pick" value="${esc(o.code)}" ${sel[o.code] !== false ? 'checked' : ''}><span><b class="nn-mono">${esc(o.code)}</b> · ${esc(o.customerName)}<br><span class="small muted">${esc(o.province || '')}${o.route ? ' · ' + esc(o.route) : ''} · hạn ${fmtD(o.dueDate)} · ${num(kgOf(o), 1)} kg${o.noEarly ? ' · không giao sớm' : ''}</span> ${dueTag(o)}</span></label>`).join('') : '<div class="empty">Không có đơn chờ phân công trong khoảng này.</div>'}</div>
+      <div style="max-height:360px;overflow:auto">${pool.length ? pool.map(o => `<label class="check"><input type="checkbox" data-chg="pick" value="${esc(o.code)}" ${sel[o.code] !== false ? 'checked' : ''}><span><b class="nn-mono">${esc(o.code)}</b> · ${esc(o.customerName)}<br><span class="small muted">${esc(o.province || '')}${o.district ? ' · ' + esc(o.district) : ''} · hạn ${fmtD(o.dueDate)} · ${num(kgOf(o), 1)} kg${o.noEarly ? ' · không giao sớm' : ''}</span> ${dueTag(o)}</span></label>`).join('') : '<div class="empty">Không có đơn chờ phân công trong khoảng này.</div>'}</div>
       <p class="small muted mt">${num(all.length - pool.length, 0)} đơn khác có hạn giao muộn hơn ${fmtD(limit)} chưa hiển thị.</p>
     </div>
     <div class="card"><h3 class="mb">3. Tài xế tham gia</h3>
@@ -437,7 +435,7 @@ function planPreview(plan) {
     const nOrders = cards.reduce((s, c) => s + c.g.codes.length, 0);
     return `<div class="mt2"><div class="rw sb center mb"><h3>${wday(day.date)} ${fmtD(day.date)} · ${num(nOrders, 0)} đơn${day.early.length ? ` · <span class="nn-tone-info">${num(day.early.length, 0)} đơn giao sớm</span>` : ''}</h3>
       ${nOrders ? statusTag(`Chênh lệch thời gian giữa tài xế: ${durTxt(spread)}`, spread <= 30 ? 'success' : 'warning') : '<span class="small muted">Không có đơn</span>'}</div>
-      ${nOrders ? `<div class="split">${cards.filter(c => c.g.codes.length).map(({ g, legs }) => { const routes = [...new Set(g.codes.map(c => byId('orders', c)?.route || byId('orders', c)?.province).filter(Boolean))];
+      ${nOrders ? `<div class="split">${cards.filter(c => c.g.codes.length).map(({ g, legs }) => { const routes = [...new Set(g.codes.map(c => byId('orders', c)?.district || byId('orders', c)?.province).filter(Boolean))];
         return `<div class="card"><div class="rw sb center"><b>${esc(userName(g.id))}</b><span class="small">${fsel('', 'veh', vehicleOpts(), g.vehicle, { empty: 'Chưa gán xe', cls: 'narrow', size: 'sm', attrs: `data-chg="planVeh" data-id="${di}|${esc(g.id)}"` })}</span></div>
           <div class="small muted">${num(g.codes.length, 0)} điểm · <b>${legs.length} chuyến</b>${routes.length ? ` · ${esc(routes.slice(0, 3).join(', '))}${routes.length > 3 ? '…' : ''}` : ''} · ~${num(legs.reduce((s, l) => s + l.sch.km, 0), 1)} km · <b>làm việc ${durTxt(g._tot)}</b></div>
           ${legs.map((l, k) => `<div class="mt" style="border-top:1px dashed var(--line);padding-top:var(--space-2)"><b>Chuyến ${k + 1}</b> <span class="small">· ${l.start} → về kho ~${l.sch.end} · ${num(l.codes.length, 0)} điểm · ${num(l.load, 1)}${l.cap ? '/' + num(l.cap, 0) : ''} kg${l.cap && capOn() && l.load > l.cap ? ' ' + statusTag('vượt tải (1 đơn quá nặng)', 'danger') : ''}${l.sch.end > '17:00' ? ' ' + statusTag('về sau 17:00', 'warning') : ''}</span>
@@ -472,7 +470,7 @@ ACT.commitPlan = () => {
   STATE.plan = null; STATE.f = {}; toast(`Đã giao ${num(n, 0)} đơn thành ${num(nt, 0)} chuyến`); ACT.tab('trips');
 };
 // Đơn phát sinh: gợi ý ghép vào chuyến đã lập / đang chạy tốn thêm ít thời gian nhất
-const optBadges = x => `${x.sameRoute ? ' ' + statusTag('cùng tuyến', 'success') : ''}${x.moving ? ' ' + statusTag('xe đã rời kho', 'warning') : ''}${x.over ? ' ' + statusTag(`vượt tải ${num(x.load, 1)}/${num(x.cap, 0)} kg`, 'danger') : ''}`;
+const optBadges = x => `${x.sameRoute ? ' ' + statusTag('cùng khu vực', 'success') : ''}${x.moving ? ' ' + statusTag('xe đã rời kho', 'warning') : ''}${x.over ? ' ' + statusTag(`vượt tải ${num(x.load, 1)}/${num(x.cap, 0)} kg`, 'danger') : ''}`;
 function mergeCard(pool) {
   const rows = pool.map(o => ({ o, best: insertionOptions(o)[0] })).filter(r => r.best).sort((a, b) => a.best.add - b.best.add).slice(0, 8);
   if (!rows.length) return '';

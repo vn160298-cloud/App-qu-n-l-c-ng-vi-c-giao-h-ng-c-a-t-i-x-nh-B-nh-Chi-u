@@ -1,5 +1,5 @@
 // Service worker: cache vỏ ứng dụng để mở được khi mất mạng (dữ liệu nằm trong IndexedDB, không bị ảnh hưởng khi nâng cấp)
-const CACHE = 'giaohang-bc-v4';
+const CACHE = 'giaohang-bc-v5';
 const SHELL = [
   './', './index.html', './geo.js', './core.js', './app.js', './views-ops.js', './views-field.js', './views-admin.js', './manifest.webmanifest', './version.json',
   './data/seed.json', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './icons/nutrinest-logo.png',

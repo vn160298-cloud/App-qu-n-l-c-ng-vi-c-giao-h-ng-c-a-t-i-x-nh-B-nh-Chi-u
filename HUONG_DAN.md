@@ -1,6 +1,6 @@
 # App quản lý công việc giao hàng của tài xế nhà Bình Chiểu
 
-Phiên bản **2.0.0** · Kho vận NutriNest · Ứng dụng web cài được lên điện thoại (PWA).
+Phiên bản **2.0.1** · Kho vận NutriNest · Ứng dụng web cài được lên điện thoại (PWA).
 Điều phối giao việc → tài xế nhận việc, check-in, chụp ảnh → Admin xác nhận cuối → đối soát → báo cáo, kèm theo dõi hành trình trên bản đồ.
 
 ## 1. Các file trong thư mục
@@ -14,7 +14,7 @@ Phiên bản **2.0.0** · Kho vận NutriNest · Ứng dụng web cài được 
 | `sw.js`, `manifest.webmanifest`, `icons/` | Cài lên màn hình chính, chạy toàn màn hình, mở được khi mất mạng |
 | `version.json` | Số phiên bản mới nhất, để app báo “Có phiên bản mới” |
 | `google-apps-script/Code.gs` | Code dán vào Google Apps Script: lưu dữ liệu vào Google Sheet, ảnh vào Google Drive |
-| `data/seed.json` | Danh mục khách hàng / tuyến nạp sẵn từ file Excel của bạn (**không đưa lên GitHub công khai**, xem mục 2) |
+| `data/seed.json` | Danh mục khách hàng nạp sẵn từ file Excel của bạn (**không đưa lên GitHub công khai**, xem mục 2) |
 | `DỮ LIỆU/` | File Excel mẫu của bạn (**không đưa lên GitHub công khai**) |
 | `supabase-schema.sql` | (Tùy chọn) nếu dùng Supabase thay Google Sheet |
 
@@ -34,12 +34,12 @@ Phiên bản **2.0.0** · Kho vận NutriNest · Ứng dụng web cài được 
 4. Trong app, đăng nhập **ADMIN / PIN 1234** (đổi PIN ngay), vào **Quản trị → Đồng bộ đám mây**: chọn *Google Sheet + Google Drive*, dán URL và TOKEN, *Bật đồng bộ*, bấm **Kiểm tra kết nối**, **Lưu & kết nối**, **Đẩy toàn bộ dữ liệu + ảnh lên**.
 5. Bấm **Mã kết nối cho máy khác** và gửi cho nhân sự. Trên máy họ: màn hình đăng nhập → **Kết nối dữ liệu công ty** → dán mã.
 
-### 2.3 Nạp danh mục khách hàng, địa chỉ, tuyến từ Excel
+### 2.3 Nạp danh mục khách hàng, địa chỉ từ Excel
 Vào **Excel In/Out → Nhập danh mục khách hàng / địa chỉ giao**, chọn **cùng lúc 2 file**: “Hạn mức giao hàng từng khách hàng.xlsx” và “Địa chỉ giao hàng.xlsx”, bấm **Nhập vào danh mục**. App tự:
 - bỏ các mã nhân viên, lấy **tỉnh** và **quận/huyện** từ địa chỉ;
-- lấy **tuyến** (93 tuyến theo tỉnh, ví dụ HÀ NỘI 1, CẦN THƠ 2) và **hạn mức giao hàng (ngày)** của từng khách;
+- lấy **hạn mức giao hàng (ngày)**, kênh bán hàng, khu vực của từng khách;
 - gộp nhiều địa chỉ giao của một khách (khách nhiều điểm giao).
-Bản chạy thử trên máy bạn đã có sẵn 1.856 khách hàng từ 2 file này.
+Bản chạy thử trên máy bạn đã có sẵn 1.856 khách hàng từ 2 file này. (App không dùng “tuyến giao”; khi chia việc, đơn được gom theo quận/huyện và tỉnh lấy từ địa chỉ.)
 
 ## 3. Nâng cấp phiên bản mà không mất dữ liệu
 Dữ liệu nằm trong **bộ nhớ máy** (IndexedDB) và **Google Sheet / Drive**, tách riêng khỏi file chương trình, nên cập nhật code không xóa dữ liệu.
@@ -63,7 +63,7 @@ Dữ liệu nằm trong **bộ nhớ máy** (IndexedDB) và **Google Sheet / Dri
 **Danh mục → Người dùng**: bảng Mã NV, Họ tên, Vai trò, Nhà máy, Bộ phận, Tài khoản (*Chưa cấp* / *Có PIN*), Trạng thái. Thêm nhân sự, sửa mọi trường (kể cả **Mã NV**; đổi mã thì app tự cập nhật các chuyến, đơn liên quan và phải cấp lại PIN), bấm **Cấp PIN / Đổi PIN** (nhập 2 lần để xác nhận). Gõ biển số xe mới ở ô “Xe mặc định” thì xe tự được thêm vào danh mục.
 
 ## 5. Quy trình làm việc
-1. **Đơn giao → Nhập đơn từ Excel** (mục 6), hoặc **Tạo đơn** thủ công (gõ để tìm khách, chọn là tự điền địa chỉ, tuyến, hạn giao).
+1. **Đơn giao → Nhập đơn từ Excel** (mục 6), hoặc **Tạo đơn** thủ công (gõ để tìm khách, chọn là tự điền địa chỉ, tỉnh, hạn giao).
 2. **Giao việc**: chọn **một hoặc nhiều ngày** xuất phát (bỏ chọn ngày nghỉ), cho phép **giao sớm** tối đa N ngày, chọn tài xế → **Chia đều & tối ưu tuyến** → xem lại, chuyển đơn giữa tài xế / ngày nếu cần → **Xác nhận tạo chuyến**.
 3. **Tài xế** (Việc của tôi): *Nhận chuyến → Bắt đầu lên hàng → Bắt đầu di chuyển → Đã đến điểm → Giao thành công (chụp ảnh, người nhận) / Không giao được → Về kho*. Mỗi bước ghi giờ chính xác đến từng giây kèm GPS.
 4. **Duyệt**: Admin là người xác nhận cuối cùng (duyệt, trả lại tài xế, cho giao lại, chốt không giao).
@@ -85,20 +85,19 @@ Cột nhận diện theo tên (không phân biệt hoa thường, dấu): **MÃ 
 - Số theo kiểu Excel: dấu chấm là thập phân (126.945 kg = 126,945 kg).
 
 ## 7. Danh mục
-- **Khách hàng**: lọc theo tỉnh, tuyến, kênh, loại tọa độ; sửa tự do (mã, tên, nhiều địa chỉ giao, tuyến, hạn mức, tọa độ…). Khách nhận hàng **trong giờ hành chính**; **không có khung giờ cố định theo khách**, khung giờ chọn theo từng đơn (Giờ hành chính, 08–10, 10–12, 13–15, 15–17…).
-- **Tuyến giao**: 93 tuyến theo tỉnh, **lọc theo tỉnh**, thêm / sửa / xóa.
+- **Khách hàng**: lọc theo tỉnh, kênh, loại tọa độ; sửa tự do (mã, tên, nhiều địa chỉ giao, hạn mức, tọa độ…). Khách nhận hàng **trong giờ hành chính**; **không có khung giờ cố định theo khách**, khung giờ chọn theo từng đơn (Giờ hành chính, 08–10, 10–12, 13–15, 15–17…).
 - **Xe**: sửa tự do biển số, loại xe, tải trọng.
 - **Người dùng**: mục 4.
-- **Xuất danh mục (Excel)** để lưu trữ: khách hàng, địa chỉ giao, tuyến, xe, nhân sự (không gồm PIN).
+- **Xuất danh mục (Excel)** để lưu trữ: khách hàng, địa chỉ giao, xe, nhân sự (không gồm PIN).
 
-## 8. Cách app tính tuyến và chia việc
+## 8. Cách app tính đường đi và chia việc
 - Thời gian một chuyến = lên hàng + di chuyển + giao tại điểm + quay về kho. 15 km đầu tính tốc độ nội thành, đoạn còn lại tính tốc độ liên tỉnh (chỉnh trong Quản trị).
 - **Tọa độ**: khách chưa có tọa độ chính xác được ước lượng theo **quận/huyện** (TP.HCM, Bình Dương, Đồng Nai, một số quận Hà Nội) hoặc **tỉnh**. Khi tài xế bấm **Đã đến điểm** có GPS, app **tự học tọa độ chính xác** của khách; cũng có thể nhập tay trong Danh mục. Tọa độ càng chính xác, thứ tự giao càng tốt.
 - **Cung đường**: khách hẹn buổi sáng trước, buổi chiều sau; trong mỗi buổi chọn đường ngắn nhất; khách nhận cả ngày chèn vào chỗ tiện đường nhất. Có nút mở Google Maps chỉ đường.
-- **Cùng tuyến / tiện đường**: đơn cùng mã tuyến (hoặc cùng quận / tỉnh) gom thành cụm và giao cho một tài xế; chỉ tách lẻ khi thời gian giữa các tài xế vẫn lệch quá 30 phút.
+- **Cùng khu vực / tiện đường**: đơn cùng quận/huyện (hoặc cùng tỉnh) gom thành cụm và giao cho một tài xế; chỉ tách lẻ khi thời gian giữa các tài xế vẫn lệch quá 30 phút.
 - **Chia đều**: tổng thời gian làm việc cả ngày của các tài xế gần bằng nhau.
 - **Tải trọng**: xe đầy thì tự tách chuyến 2, 3 (về kho lấy hàng rồi đi tiếp).
-- **Nhiều ngày và giao sớm**: đơn sắp hết hạn giao được giao trước. Đơn có hạn muộn hơn được **giao sớm** (tối đa N ngày) nếu cùng tuyến / tiện đường với đơn đang đi ngày đó; đơn đánh dấu **Khách không nhận sớm** thì không giao trước hạn.
+- **Nhiều ngày và giao sớm**: đơn sắp hết hạn giao được giao trước. Đơn có hạn muộn hơn được **giao sớm** (tối đa N ngày) nếu cùng khu vực / tiện đường với đơn đang đi ngày đó; đơn đánh dấu **Khách không nhận sớm** thì không giao trước hạn.
 - **Đơn quá xa** (mặc định hơn 250 km một chiều, chỉnh trong Quản trị) không tự xếp vì không giao kịp trong ngày; app báo riêng để xử lý bằng chuyến liên tỉnh.
 - **Ghép đơn phát sinh**: tạo đơn mới mà trong ngày đã có chuyến thì app gợi ý chuyến tiện đường nhất (số phút đi thêm), kể cả chuyến đang chạy.
 
