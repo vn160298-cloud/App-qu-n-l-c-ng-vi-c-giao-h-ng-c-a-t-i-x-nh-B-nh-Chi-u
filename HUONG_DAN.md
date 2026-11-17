@@ -1,107 +1,130 @@
 # App quản lý công việc giao hàng của tài xế nhà Bình Chiểu
 
-Ứng dụng web cài được lên điện thoại (PWA): điều phối giao việc → tài xế nhận việc & check-in → Admin xác nhận cuối → đối soát → báo cáo. Chạy độc lập, không cần cài phần mềm.
+Phiên bản **2.0.0** · Kho vận NutriNest · Ứng dụng web cài được lên điện thoại (PWA).
+Điều phối giao việc → tài xế nhận việc, check-in, chụp ảnh → Admin xác nhận cuối → đối soát → báo cáo, kèm theo dõi hành trình trên bản đồ.
 
-## 1. Cấu trúc file
+## 1. Các file trong thư mục
 
 | File | Vai trò |
 |---|---|
-| `index.html` | Giao diện, kiểu dáng, khai báo PWA |
-| `core.js` | Lưu trữ, đồng bộ đám mây, phân quyền, nhật ký, thuật toán tuyến & chia việc, chuẩn Excel |
-| `app.js` | Các màn hình và thao tác |
-| `sw.js`, `manifest.webmanifest`, `icons/` | Giúp app cài lên màn hình chính, chạy toàn màn hình, mở được khi mất mạng |
+| `index.html` | Khung trang, giao diện NutriNest (bộ phận Kho vận), khai báo PWA |
+| `geo.js` | Danh sách 63 tỉnh, quận/huyện chính, tọa độ ước lượng |
+| `core.js` | Lưu trữ, đồng bộ, nâng cấp dữ liệu, thuật toán tuyến, chuẩn Excel |
+| `app.js`, `views-ops.js`, `views-field.js`, `views-admin.js` | Các màn hình |
+| `sw.js`, `manifest.webmanifest`, `icons/` | Cài lên màn hình chính, chạy toàn màn hình, mở được khi mất mạng |
+| `version.json` | Số phiên bản mới nhất, để app báo “Có phiên bản mới” |
 | `google-apps-script/Code.gs` | Code dán vào Google Apps Script: lưu dữ liệu vào Google Sheet, ảnh vào Google Drive |
-| `supabase-schema.sql` | (Tùy chọn) Lệnh tạo bảng nếu dùng Supabase |
-| `README.md`, `.nojekyll` | Dùng khi đưa code lên GitHub Pages |
+| `data/seed.json` | Danh mục khách hàng / tuyến nạp sẵn từ file Excel của bạn (**không đưa lên GitHub công khai**, xem mục 2) |
+| `DỮ LIỆU/` | File Excel mẫu của bạn (**không đưa lên GitHub công khai**) |
+| `supabase-schema.sql` | (Tùy chọn) nếu dùng Supabase thay Google Sheet |
 
-## 2. Lưu trữ dữ liệu trên Google Sheet + Google Drive (đang dùng)
+## 2. Cài đặt lần đầu
 
-Toàn bộ dữ liệu được lưu vào **1 file Google Sheet**. Mỗi bảng nằm trên 1 sheet riêng, tên cột đặt theo chuẩn Excel In/Out:
-`DON_HANG`, `CHUYEN_GIAO`, `KHACH_HANG`, `TUYEN`, `XE`, `NHAN_SU`, `DOI_SOAT`, `NHAT_KY`, `CAI_DAT`, `ANH`.
-- 4 cột đầu của mỗi sheet là `ID`, `COLL`, `UPDATED_AT`, `DELETED`. Đây là các cột dùng để đồng bộ, **không sửa tay**.
-- Cột cuối `DATA_JSON` chứa bản ghi đầy đủ. App đọc lại dữ liệu từ cột này.
-- **Ảnh** giao hàng được lưu vào Google Drive, trong thư mục `GiaoHang_BinhChieu_AnhGiaoHang/yyyy-mm`. Sheet `ANH` ghi mã đơn, ngày, loại ảnh, **link ảnh** và FILE_ID. Ảnh ở chế độ riêng tư (chỉ chủ Google Drive mở được), app lấy ảnh qua Apps Script.
-- Google Sheet + Drive là **kho lưu trữ đầy đủ, không bao giờ bị app xóa**. Lệnh xóa trong app chỉ đánh dấu `DELETED = TRUE`, dòng vẫn còn.
+### 2.1 Đưa app lên GitHub Pages
+1. Tạo repository trên GitHub, tải toàn bộ file trong thư mục lên (file `.gitignore` đã loại sẵn `DỮ LIỆU/` và `data/seed.json`).
+2. Vào **Settings → Pages**, chọn **Deploy from a branch**, nhánh `main`, thư mục `/ (root)`, bấm Save.
+3. Sau 1–2 phút app chạy ở `https://<tài-khoản>.github.io/<tên-repo>/`.
 
-### Cài đặt (khoảng 10 phút)
-1. Vào Google Drive, tạo 1 **Google Sheet** mới, ví dụ đặt tên *Dữ liệu giao hàng Bình Chiểu*.
-2. Trong file Sheet, chọn **Tiện ích mở rộng → Apps Script**. Xóa code mẫu, dán toàn bộ nội dung file `google-apps-script/Code.gs` vào.
-3. **Đổi `TOKEN`** ở đầu file thành một chuỗi bí mật của bạn, ví dụ `BinhChieu-2026-x7Kq`. Bấm 💾 để lưu.
-4. Bấm **Triển khai → Tùy chọn triển khai mới**, chọn loại **Ứng dụng web**, rồi chọn:
-   *Thực thi với tư cách: **Tôi*** và *Người có quyền truy cập: **Bất kỳ ai***. Bấm **Triển khai** và cấp quyền truy cập Sheet và Drive.
-5. Copy **URL ứng dụng web** (có dạng `https://script.google.com/macros/s/…/exec`).
-6. Trong app, đăng nhập Admin, vào **Cài đặt → Đồng bộ đám mây**:
-   - Chọn nơi lưu trữ **Google Sheet + Google Drive**, dán URL và TOKEN, chọn *Bật đồng bộ*.
-   - Bấm **Kiểm tra kết nối**, rồi **Lưu & kết nối**, rồi **Đẩy toàn bộ dữ liệu + ảnh lên** (chỉ cần làm lần đầu).
-7. Bấm **🔗 Mã kết nối cho máy khác** và gửi mã cho tài xế. Trên máy tài xế, vào **Cài đặt → Kết nối**, dán mã rồi bấm Kết nối.
+> **Vì sao không đưa danh sách khách hàng lên GitHub?** Gói GitHub Pages miễn phí yêu cầu repo **công khai**, ai cũng đọc được file trong repo. Danh sách khách hàng (tên công ty, địa chỉ) nên chỉ nằm trong Google Sheet riêng tư của bạn. Vì vậy app nạp danh mục bằng **Excel In/Out** (mục 2.3). Nếu bạn dùng repo **private** (có trả phí) và muốn app tự nạp lần đầu, xóa 2 dòng cuối trong `.gitignore`.
 
-Mỗi khi sửa Code.gs, vào **Triển khai → Quản lý triển khai → ✏️ → Phiên bản: Phiên bản mới**. Cách này giữ nguyên URL.
+### 2.2 Google Sheet + Google Drive
+1. Tạo 1 Google Sheet mới. Chọn **Tiện ích mở rộng → Apps Script**, xóa code mẫu, dán toàn bộ `google-apps-script/Code.gs`.
+2. **Đổi `TOKEN`** ở đầu file thành chuỗi bí mật của bạn (chỉ đổi trong Apps Script, không ghi vào file trên GitHub).
+3. **Triển khai → Tùy chọn triển khai mới → Ứng dụng web**: thực thi với tư cách *Tôi*, quyền truy cập *Bất kỳ ai*. Cấp quyền và copy URL (`…/exec`).
+4. Trong app, đăng nhập **ADMIN / PIN 1234** (đổi PIN ngay), vào **Quản trị → Đồng bộ đám mây**: chọn *Google Sheet + Google Drive*, dán URL và TOKEN, *Bật đồng bộ*, bấm **Kiểm tra kết nối**, **Lưu & kết nối**, **Đẩy toàn bộ dữ liệu + ảnh lên**.
+5. Bấm **Mã kết nối cho máy khác** và gửi cho nhân sự. Trên máy họ: màn hình đăng nhập → **Kết nối dữ liệu công ty** → dán mã.
 
-**Giới hạn của Google Sheet:** app tự đồng bộ khoảng mỗi 20 giây. Google Sheet chậm hơn cơ sở dữ liệu thật, nhưng đủ dùng cho khoảng 10–20 tài xế và dữ liệu 3 tháng. Mỗi file Sheet chứa tối đa 10 triệu ô. Ảnh tính vào dung lượng Google Drive (gói miễn phí có 15GB, mỗi ảnh khoảng 150KB).
-Nếu sau này quy mô lớn hơn, có thể chuyển sang **Supabase**: app vẫn hỗ trợ, chọn ở cùng màn hình cài đặt và dùng file `supabase-schema.sql`.
+### 2.3 Nạp danh mục khách hàng, địa chỉ, tuyến từ Excel
+Vào **Excel In/Out → Nhập danh mục khách hàng / địa chỉ giao**, chọn **cùng lúc 2 file**: “Hạn mức giao hàng từng khách hàng.xlsx” và “Địa chỉ giao hàng.xlsx”, bấm **Nhập vào danh mục**. App tự:
+- bỏ các mã nhân viên, lấy **tỉnh** và **quận/huyện** từ địa chỉ;
+- lấy **tuyến** (93 tuyến theo tỉnh, ví dụ HÀ NỘI 1, CẦN THƠ 2) và **hạn mức giao hàng (ngày)** của từng khách;
+- gộp nhiều địa chỉ giao của một khách (khách nhiều điểm giao).
+Bản chạy thử trên máy bạn đã có sẵn 1.856 khách hàng từ 2 file này.
 
-## 2b. Xác nhận app chỉ giữ dữ liệu 3 tháng (Google Sheet & Drive vẫn giữ đủ)
-- Vào **Cài đặt → Thời hạn lưu trữ dữ liệu** (chỉ Admin). Mặc định là **3 tháng gần nhất**, có thể đổi thành 1, 2, 6 hoặc 12 tháng.
-- App hiển thị số đơn, ảnh, chuyến, đối soát và nhật ký cũ hơn mốc. Trang Tổng quan của Admin cũng có nhắc nhở khi có dữ liệu cũ.
-- Admin bấm **Xác nhận app chỉ giữ dữ liệu 3 tháng gần nhất**. App hỏi xác nhận rồi yêu cầu gõ chữ `XOA`. Sau đó:
-  1. App kiểm tra mọi dữ liệu cũ **đã lên Google Sheet**. Nếu còn dữ liệu chưa gửi được (ví dụ do mất mạng), app dừng lại và **không xóa gì**.
-  2. Dữ liệu và ảnh cũ bị **gỡ khỏi app** trên máy Admin. Các máy tài xế và nhân viên tự gỡ ở lần đồng bộ kế tiếp. Nhờ vậy điện thoại nhẹ và chạy nhanh hơn.
-  3. **Google Sheet và ảnh trên Google Drive giữ nguyên đầy đủ.** Muốn xem lại đơn, ảnh hay đối soát cũ, mở thẳng Google Sheet: sheet `ANH` có link từng ảnh.
-  4. Muốn có thêm bản Excel trên máy thì tick ô *Xuất thêm file Excel dữ liệu cũ*.
-- Dữ liệu cũ đã gỡ sẽ không bị tải lại vào app, kể cả trên máy mới kết nối.
-- **Danh mục** (khách hàng, tuyến, xe, người dùng) luôn được giữ trong app.
-- Thao tác xác nhận được ghi vào Nhật ký.
-- Nếu chưa bật Google Sheet, app bắt buộc xuất file Excel lưu trữ trước khi gỡ, và ảnh cũ sẽ mất. Vì vậy nên bật Google Sheet trước.
-- Lâu dài, sau vài năm nếu Google Sheet quá lớn, có thể tạo file Sheet mới cho năm mới: chỉ cần triển khai Code.gs trên file mới rồi gửi mã kết nối mới.
+## 3. Nâng cấp phiên bản mà không mất dữ liệu
+Dữ liệu nằm trong **bộ nhớ máy** (IndexedDB) và **Google Sheet / Drive**, tách riêng khỏi file chương trình, nên cập nhật code không xóa dữ liệu.
+1. (Khuyến nghị) **Quản trị → Phiên bản & sao lưu → Sao lưu dữ liệu (JSON)**.
+2. Thay file mới trong repo GitHub: tải lên đè các file `.html`, `.js`, `sw.js`, `version.json`, `google-apps-script/Code.gs` (không cần tải `.claude`). Khi phát hành bản mới, đổi số phiên bản ở cả `APP_VERSION` trong `core.js` và `version.json`.
+3. Nếu `Code.gs` có thay đổi: dán vào Apps Script rồi **Triển khai → Quản lý triển khai → ✏️ → Phiên bản mới** (giữ nguyên URL, không cần dán lại URL trên các máy).
+4. Điện thoại mở app có mạng sẽ hiện thanh vàng **“Có phiên bản mới – Cập nhật ngay”**. Bấm là xong.
+5. Nếu cấu trúc dữ liệu đổi (số `SCHEMA_VERSION` tăng), app tự chuyển dữ liệu cũ sang cấu trúc mới ở lần mở đầu tiên và báo kết quả trên Tổng quan. Nâng từ bản 1.x lên 2.0: đơn cũ được bỏ trường thu hộ / hàng hóa, thêm hạn giao; dữ liệu mẫu cũ bị gỡ; khách hàng, tuyến, xe, nhân sự bạn tự thêm được **giữ nguyên**.
+6. Có sự cố: **Khôi phục từ file sao lưu**.
 
-## 3. Chạy app trên GitHub Pages & cài lên điện thoại
-1. Tạo repository trên GitHub, ví dụ `giaohang-binhchieu`, ở chế độ Public (GitHub Pages miễn phí chỉ dùng được với repo Public). Tải toàn bộ file trong thư mục lên. Không cần tải thư mục `.claude`.
-2. Vào **Settings → Pages**. Chọn **Source: Deploy from a branch**, **Branch: main / (root)**, rồi bấm **Save**.
-3. Sau khoảng 1–2 phút, app chạy ở `https://<tài-khoản>.github.io/giaohang-binhchieu/`.
-4. Gửi link cho tài xế:
-   - **iPhone (Safari):** bấm nút Chia sẻ ⬆, chọn **Thêm vào MH chính**.
-   - **Android (Chrome):** bấm ⋮, chọn **Cài đặt ứng dụng / Thêm vào màn hình chính**.
-5. Khi cập nhật code, chỉ cần đẩy file mới lên GitHub. Lần mở app kế tiếp sẽ tự lấy bản mới.
+## 4. Tài khoản và vai trò
+Đăng nhập bằng **Mã NV + PIN** (có nút Hiện để xem PIN). App **tự ghi nhớ phiên đăng nhập** trên máy, chỉ hỏi lại khi bấm **Đăng xuất** hoặc khi PIN bị đổi.
 
-> ⚠ **Bảo mật:** repo Public thì ai cũng xem được code, nhưng **không** xem được dữ liệu, vì dữ liệu nằm trong Google Sheet của bạn và cần TOKEN mới truy cập được. Tuyệt đối **không ghi TOKEN thật vào file Code.gs trên GitHub**, chỉ đổi TOKEN trong bản Code.gs nằm trên Google Apps Script.
+| Vai trò | Quyền chính |
+|---|---|
+| Admin | Toàn quyền, **người xác nhận cuối cùng**, quản trị, nhật ký |
+| Điều phối | Tạo / nhập đơn, giao việc, chuyến, **bản đồ theo dõi**, danh mục, ảnh |
+| Tài xế | Chỉ thấy việc của mình: nhận chuyến, check-in, chụp ảnh |
+| Kế toán | Đối soát, báo cáo, xuất Excel |
 
-
-## 4. Tài khoản mẫu (PIN mặc định `1234`, hãy đổi ngay)
-| Mã | Vai trò | Quyền chính |
-|---|---|---|
-| AD01 | Admin | Toàn quyền, **người xác nhận cuối cùng**, quản lý người dùng, cài đặt, nhật ký |
-| DP01 | Điều phối | Tạo đơn, giao việc, chuyến, lịch, ảnh, danh mục, Excel |
-| KT01 | Kế toán | Đối soát thu hộ, báo cáo, xuất Excel |
-| TX01–TX04 | Tài xế | Chỉ thấy việc của mình: nhận chuyến, check-in, chụp ảnh, ghi tiền thu hộ |
+**Danh mục → Người dùng**: bảng Mã NV, Họ tên, Vai trò, Nhà máy, Bộ phận, Tài khoản (*Chưa cấp* / *Có PIN*), Trạng thái. Thêm nhân sự, sửa mọi trường (kể cả **Mã NV**; đổi mã thì app tự cập nhật các chuyến, đơn liên quan và phải cấp lại PIN), bấm **Cấp PIN / Đổi PIN** (nhập 2 lần để xác nhận). Gõ biển số xe mới ở ô “Xe mặc định” thì xe tự được thêm vào danh mục.
 
 ## 5. Quy trình làm việc
-1. **Tạo đơn** (Đơn giao → ＋ Tạo đơn, hoặc nhập Excel). Chọn **mã khách hàng** thì app tự điền tên, SĐT, địa chỉ, tuyến, khung giờ. Mỗi đơn có mã duy nhất `DHyymmdd-###`.
-2. **Giao việc** → chọn ngày xuất phát & giờ đi → **⚖️ Chia đều & tối ưu tuyến**. App chia đơn sao cho tổng thời gian của các tài xế gần bằng nhau, rồi sắp cung đường tốt nhất cho từng người. Có thể chuyển đơn qua lại giữa các tài xế, sau đó bấm **Xác nhận tạo chuyến**. Mỗi đơn gắn với 1 tài xế và 1 chuyến `CHyymmdd-##`.
-3. **Tài xế** (Việc của tôi) bấm lần lượt: *Nhận chuyến → Bắt đầu lên hàng → Bắt đầu di chuyển → Đã đến điểm → Giao thành công (chụp ảnh + ghi tiền thu hộ) / Không giao được → Về kho*. Mỗi lần bấm ghi **giờ chính xác đến từng giây** kèm vị trí GPS. Ảnh được đóng dấu mã đơn, thời gian và tên tài xế.
-4. **Duyệt**: Admin là người xác nhận cuối cùng (app gợi ý Admin). Admin có thể duyệt hoàn tất, trả lại tài xế, cho giao lại hoặc chốt không giao.
-5. **Ảnh giao**: lọc đơn đã giao / chưa giao / thiếu ảnh và tải ảnh check-in lên.
-6. **Lịch**: lịch tháng, bảng lịch theo ngày xuất phát và biểu đồ thời gian (kế hoạch so với thực tế).
-7. **Đối soát**: so tiền phải thu, tài xế báo đã thu và tiền nộp về, rồi chốt theo từng tài xế.
-8. **Báo cáo**: tỷ lệ giao thành công, tỷ lệ đúng khung giờ, thời gian tại điểm, thời gian làm việc thực tế/kế hoạch, lý do thất bại.
-9. **Nhật ký**: mọi thao tác đều ghi lại người làm, giờ, nội dung và GPS.
+1. **Đơn giao → Nhập đơn từ Excel** (mục 6), hoặc **Tạo đơn** thủ công (gõ để tìm khách, chọn là tự điền địa chỉ, tuyến, hạn giao).
+2. **Giao việc**: chọn **một hoặc nhiều ngày** xuất phát (bỏ chọn ngày nghỉ), cho phép **giao sớm** tối đa N ngày, chọn tài xế → **Chia đều & tối ưu tuyến** → xem lại, chuyển đơn giữa tài xế / ngày nếu cần → **Xác nhận tạo chuyến**.
+3. **Tài xế** (Việc của tôi): *Nhận chuyến → Bắt đầu lên hàng → Bắt đầu di chuyển → Đã đến điểm → Giao thành công (chụp ảnh, người nhận) / Không giao được → Về kho*. Mỗi bước ghi giờ chính xác đến từng giây kèm GPS.
+4. **Duyệt**: Admin là người xác nhận cuối cùng (duyệt, trả lại tài xế, cho giao lại, chốt không giao).
+5. **Ảnh giao**: lọc theo ngày, nhóm đơn, **mã đơn**, **khách hàng**.
+6. **Đối soát**: theo tài xế và ngày — số đơn, giao thành công, số thùng, kg, tỷ lệ đúng hạn; bấm *Chốt kết quả*. (Đã bỏ thu hộ.)
+7. **Báo cáo**: tỷ lệ giao thành công, đúng hạn, giao sớm, thùng, kg, theo tài xế / tỉnh, lý do không giao được.
 
-## 6. Chuẩn Excel In/Out
-Tên sheet và cột cố định (IN HOA, không dấu): `DON_HANG`, `CHUYEN_GIAO`, `KHACH_HANG`, `TUYEN`, `XE`, `NHAN_SU`, `DOI_SOAT`, `NHAT_KY`, `MO_TA_COT`.
-Khóa liên kết: `MA_DON`, `MA_KH`, `MA_TAI_XE`, `MA_CHUYEN`. Vào **Excel In/Out → Tải file mẫu nhập liệu** để lấy mẫu. Khi nhập đơn chỉ cần `NGAY_GIAO` + `MA_KH`, app tự điền phần còn lại.
+**Lọc ngày nhanh** ở Tổng quan, Đơn giao, Chuyến giao, Ảnh giao, Đối soát, Báo cáo, Nhật ký, Việc của tôi: *Hôm qua · Hôm nay · Tuần này · Tháng này · Tùy chỉnh* (chọn từ–đến trong lịch).
 
-## 7. Cách app tính tuyến, chia việc & chuyến giao
-- **1 chuyến = 1 lần xe rời kho.** Xe chở nhiều đơn, giao lần lượt từng điểm theo cung đường tốt nhất, giao xong điểm cuối mới về kho.
-- **Thời gian 1 chuyến** = lên hàng + di chuyển (khoảng cách × hệ số đường phố ÷ tốc độ trung bình) + thời gian giao tại điểm + quay về kho. Các thông số chỉnh trong **Cài đặt**.
-- **Cung đường:** khách hẹn buổi sáng giao trước, buổi chiều giao sau. Trong mỗi buổi, app chọn đường ngắn nhất (điểm gần nhất kết hợp 2-opt). Khách nhận "Cả ngày" được chèn vào chỗ tiện đường nhất. Bấm **Chỉ đường Google Maps** để mở cả tuyến.
-- **Ưu tiên cùng tuyến / tiện đường:** đơn cùng mã tuyến (T1, T2…) được gom thành một cụm. Đơn chưa có tuyến được nhập vào cụm có điểm gần nhất trong bán kính 3 km. App giao **nguyên cụm** cho một tài xế, và chỉ tách lẻ một cụm khi thời gian giữa các tài xế vẫn lệch quá 30 phút (ví dụ 1 tuyến có quá nhiều đơn cho 1 người). Tắt được trong Cài đặt → *Chia việc theo tuyến*.
-- **Tải trọng xe → nhiều chuyến trong ngày:** app cộng khối lượng các đơn (cột *Khối lượng kg*) và so với tải trọng xe (Danh mục → Xe). Xe đầy thì app tự tách thành chuyến 2, 3…: giao xong chuyến 1, về kho lấy hàng rồi đi tiếp. Chuyến sau xuất phát lúc chuyến trước về kho. Mỗi chuyến cũng gồm các điểm tiện đường liền nhau. Phần **chia đều** tính theo **tổng thời gian cả ngày** của mỗi tài xế. Tắt được trong Cài đặt → *Tải trọng xe*.
-- **Đơn phát sinh, ghép tiện đường:** khi tạo đơn mới mà trong ngày đã có chuyến, app tự mở **Gợi ý ghép tiện đường**. Gợi ý liệt kê các chuyến theo số phút đi thêm (tính từ điểm xe vừa giao, chèn vào chỗ tiện nhất) và gắn nhãn *cùng tuyến*, *xe đã rời kho*, *vượt tải*. Bấm **Ghép** là xong, app sắp lại thứ tự giao cho tài xế. Trang **Giao việc** cũng có khung *Ghép đơn tiện đường* cho tất cả đơn đang chờ.
-- Muốn tính chính xác, khách hàng cần có **tọa độ** (Danh mục → Khách hàng → Lấy tọa độ) và đơn cần có **khối lượng**. Khách chưa có tọa độ được tính tạm 12 phút di chuyển.
+**Tổng quan** có chọn **tài xế** (hoặc bấm vào thẻ tài xế) để xem tất cả chuyến của người đó, lọc theo trạng thái và từ khóa, xem từng điểm giao.
 
-## 8. Lộ trình các giai đoạn sau
-- Nối hệ thống bán hàng / kế toán / kho qua Excel chuẩn, sau đó qua API của Supabase.
-- Theo dõi GPS liên tục trên bản đồ và tối ưu tuyến theo giao thông thực tế (Google Routes API / OSRM).
-- Đăng nhập bằng tài khoản Google / Supabase Auth và phân quyền dữ liệu ở máy chủ.
-- Gửi thông báo đẩy cho tài xế khi có chuyến mới.
+## 6. Nhập đơn từ file mẫu đơn giao
+Cột nhận diện theo tên (không phân biệt hoa thường, dấu): **MÃ HÀNG, MÔ TẢ, TÊN KHÁCH HÀNG, SỐ ĐƠN HÀNG XUẤT, TÊN TÀI XẾ, MÃ ĐƠN HÀNG XUẤT, NGÀY XUẤT HÀNG THỰC TẾ, NGÀY ĐẶT HÀNG, SỐ LƯỢNG THÙNG, KG**. Cột tùy chọn: MÃ KH, ĐỊA CHỈ GIAO HÀNG, HẠN GIAO, KHUNG GIỜ, KHÔNG GIAO SỚM, GHI CHÚ. Bấm **Tải file mẫu** trong cửa sổ nhập để lấy file đúng định dạng.
+- Mỗi dòng là một mặt hàng; các dòng cùng **MÃ ĐƠN HÀNG XUẤT** gộp thành **1 đơn** (cộng thùng và kg). Mã đơn này là mã duy nhất của đơn.
+- **Khách hàng** khớp theo tên với danh mục (hoặc theo MÃ KH). Tên chưa có trong danh mục thì app tạo khách mới (mã KM0001…) để bạn bổ sung địa chỉ, tuyến.
+- **Hạn giao = NGÀY ĐẶT HÀNG + hạn mức giao hàng của khách** (số ngày trong file “Hạn mức giao hàng”, khách chưa có thì lấy mặc định 3 ngày, đổi trong Quản trị). Có cột HẠN GIAO thì dùng cột đó.
+- Nếu có cả **TÊN TÀI XẾ** (trùng tên trong app) và **NGÀY XUẤT HÀNG THỰC TẾ**, đơn được gán luôn vào chuyến của tài xế ngày đó.
+- Đơn trùng mã: đơn còn “Chờ phân công” được cập nhật, đơn đã phân công / đã giao được giữ nguyên.
+- Số theo kiểu Excel: dấu chấm là thập phân (126.945 kg = 126,945 kg).
 
-> Lưu ý bảo mật: giai đoạn 1 dùng PIN nội bộ và TOKEN chung, phù hợp dùng trong nội bộ. Ai có TOKEN đều đọc/ghi được dữ liệu, nên chỉ đưa mã kết nối cho nhân viên và đổi TOKEN khi có người nghỉ việc. Khi đổi TOKEN, cần dán lại mã kết nối mới trên mọi máy.
+## 7. Danh mục
+- **Khách hàng**: lọc theo tỉnh, tuyến, kênh, loại tọa độ; sửa tự do (mã, tên, nhiều địa chỉ giao, tuyến, hạn mức, tọa độ…). Khách nhận hàng **trong giờ hành chính**; **không có khung giờ cố định theo khách**, khung giờ chọn theo từng đơn (Giờ hành chính, 08–10, 10–12, 13–15, 15–17…).
+- **Tuyến giao**: 93 tuyến theo tỉnh, **lọc theo tỉnh**, thêm / sửa / xóa.
+- **Xe**: sửa tự do biển số, loại xe, tải trọng.
+- **Người dùng**: mục 4.
+- **Xuất danh mục (Excel)** để lưu trữ: khách hàng, địa chỉ giao, tuyến, xe, nhân sự (không gồm PIN).
+
+## 8. Cách app tính tuyến và chia việc
+- Thời gian một chuyến = lên hàng + di chuyển + giao tại điểm + quay về kho. 15 km đầu tính tốc độ nội thành, đoạn còn lại tính tốc độ liên tỉnh (chỉnh trong Quản trị).
+- **Tọa độ**: khách chưa có tọa độ chính xác được ước lượng theo **quận/huyện** (TP.HCM, Bình Dương, Đồng Nai, một số quận Hà Nội) hoặc **tỉnh**. Khi tài xế bấm **Đã đến điểm** có GPS, app **tự học tọa độ chính xác** của khách; cũng có thể nhập tay trong Danh mục. Tọa độ càng chính xác, thứ tự giao càng tốt.
+- **Cung đường**: khách hẹn buổi sáng trước, buổi chiều sau; trong mỗi buổi chọn đường ngắn nhất; khách nhận cả ngày chèn vào chỗ tiện đường nhất. Có nút mở Google Maps chỉ đường.
+- **Cùng tuyến / tiện đường**: đơn cùng mã tuyến (hoặc cùng quận / tỉnh) gom thành cụm và giao cho một tài xế; chỉ tách lẻ khi thời gian giữa các tài xế vẫn lệch quá 30 phút.
+- **Chia đều**: tổng thời gian làm việc cả ngày của các tài xế gần bằng nhau.
+- **Tải trọng**: xe đầy thì tự tách chuyến 2, 3 (về kho lấy hàng rồi đi tiếp).
+- **Nhiều ngày và giao sớm**: đơn sắp hết hạn giao được giao trước. Đơn có hạn muộn hơn được **giao sớm** (tối đa N ngày) nếu cùng tuyến / tiện đường với đơn đang đi ngày đó; đơn đánh dấu **Khách không nhận sớm** thì không giao trước hạn.
+- **Đơn quá xa** (mặc định hơn 250 km một chiều, chỉnh trong Quản trị) không tự xếp vì không giao kịp trong ngày; app báo riêng để xử lý bằng chuyến liên tỉnh.
+- **Ghép đơn phát sinh**: tạo đơn mới mà trong ngày đã có chuyến thì app gợi ý chuyến tiện đường nhất (số phút đi thêm), kể cả chuyến đang chạy.
+
+## 9. Theo dõi hành trình trên bản đồ (Admin, Điều phối)
+Tab **Bản đồ**: chọn ngày, tài xế, chuyến để xem kho, các điểm giao (xanh = đã giao, đỏ = không giao được), tuyến kế hoạch (đường đứt), **hành trình thực tế** (đường liền) và **vị trí mới nhất** của tài xế. Từ Tổng quan hoặc Chuyến giao bấm **Hành trình** để xem một chuyến.
+- GPS chỉ ghi khi chuyến đang chạy (từ *Bắt đầu lên hàng* đến *Về kho*) và **app trên điện thoại tài xế đang mở**, đã cho phép vị trí. App giữ màn hình sáng trong lúc chạy chuyến.
+- Vị trí gửi về theo chu kỳ (mặc định 3 phút, chỉnh trong Quản trị). Nhanh hơn thì tốn hạn mức thời gian chạy của Google Apps Script (xem mục 10).
+- Cần bản đồ cập nhật theo từng giây hoặc nhiều tài xế: dùng Supabase thay Google Sheet.
+
+## 10. Dung lượng, lưu trữ và nâng cấp
+**Quản trị → Dung lượng đang sử dụng** hiển thị: bộ nhớ thiết bị, dung lượng từng loại dữ liệu, ảnh, ước tính tốc độ tăng; bấm **Kiểm tra dung lượng Google Sheet / Drive** để xem số ô Google Sheet (giới hạn 10 triệu ô mỗi file), ảnh trên Drive và dung lượng Drive còn lại. Mục **Hướng dẫn nâng cấp dung lượng** ngay bên dưới gồm:
+- Thiết bị đầy → xác nhận chỉ giữ 1–3 tháng gần nhất trên app.
+- Google Drive đầy → nâng cấp **Google One** (hoặc Google Workspace), app tự lưu tiếp.
+- Google Sheet gần đầy → tạo file Sheet mới cho năm mới, dán lại Code.gs, đẩy dữ liệu; file cũ giữ làm kho lưu trữ.
+- Nhiều tài xế hoặc cần thời gian thực → chuyển sang Supabase.
+
+**Thời hạn lưu trữ**: Admin xác nhận để app chỉ giữ dữ liệu 3 tháng (chọn 1–12 tháng). Dữ liệu cũ chỉ bị **gỡ khỏi app trên các máy**; **Google Sheet và ảnh trên Drive vẫn giữ nguyên đầy đủ**.
+
+**Hạn mức Google Apps Script**: có giới hạn tổng thời gian chạy mỗi ngày (tài khoản Gmail thường khoảng 90 phút, Workspace khoảng 6 giờ). Mỗi lần đồng bộ tốn một ít, nên với khoảng 20–30 tài xế chạy cả ngày, hãy tăng chu kỳ gửi GPS hoặc chuyển sang Supabase.
+
+## 11. Quy ước hiển thị và bảo mật
+- Số: dấu chấm ngăn phần nghìn và triệu, dấu phẩy là thập phân (`12.450 kg`, `98,6%`); ngày `dd/mm/yyyy`; giờ `hh:mm`. Các ô nhập số tự định dạng khi rời ô.
+- Giai đoạn này dùng PIN nội bộ và TOKEN chung. Ai có TOKEN đều đọc / ghi được dữ liệu, nên chỉ gửi mã kết nối cho nhân viên, đổi TOKEN khi có người nghỉ việc (rồi dán lại mã kết nối mới trên các máy).
+- Đổi PIN mặc định của ADMIN ngay lần đầu đăng nhập.
+
+## 12. Lộ trình sau
+- Nối hệ thống bán hàng / kế toán / kho qua Excel chuẩn, sau đó qua API.
+- Tối ưu tuyến theo giao thông thực tế (Google Routes / OSRM), thông báo đẩy cho tài xế.
+- Đăng nhập bằng tài khoản Google / Supabase Auth, phân quyền dữ liệu ở máy chủ.

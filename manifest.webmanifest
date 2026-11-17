@@ -1,14 +1,14 @@
 {
   "name": "App quản lý công việc giao hàng của tài xế nhà Bình Chiểu",
   "short_name": "Giao hàng BC",
-  "description": "Điều phối – giao việc – cập nhật trạng thái – đối soát – báo cáo giao hàng nhà Bình Chiểu",
+  "description": "Điều phối – giao việc – theo dõi hành trình – đối soát giao hàng, Kho vận NutriNest Bình Chiểu",
   "id": "./",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f2a4a",
-  "theme_color": "#0f2a4a",
+  "background_color": "#ffdd00",
+  "theme_color": "#1d4ed8",
   "lang": "vi",
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

@@ -20,7 +20,7 @@ const TOKEN = 'DOI-MA-BI-MAT-NAY';                       // ⚠ đổi thành ch
 const PHOTO_FOLDER = 'GiaoHang_BinhChieu_AnhGiaoHang';   // thư mục ảnh trên Google Drive
 const PHOTO_SHEET = 'ANH';
 const BASE = ['ID', 'COLL', 'UPDATED_AT', 'DELETED'];
-const PHOTO_COLS = ['MA_DON', 'NGAY', 'LOAI', 'LINK', 'FILE_ID'];
+const PHOTO_COLS = ['MA_DON', 'NGAY', 'LOAI', 'LINK', 'FILE_ID', 'DUNG_LUONG'];
 
 function doGet() {
   return out({ ok: true, msg: 'Apps Script App giao hàng Bình Chiểu đang chạy' });
@@ -36,7 +36,8 @@ function doPost(e) {
       case 'push':  return out(withLock(() => push(req.rows || [])));
       case 'pull':  return out(pull(req.since || '', req.limit || 1000));
       case 'photo': return out(photo(req.id));
-      default:      return out({ ok: false, error: 'Thao tác không hỗ trợ: ' + req.action });
+      case 'stats': return out(stats());
+      default:     return out({ ok: false, error: 'Thao tác không hỗ trợ: ' + req.action });
     }
   } catch (err) {
     return out({ ok: false, error: String((err && err.message) || err) });
@@ -108,7 +109,7 @@ function push(rows) {
           row[col('FILE_ID')] = ''; row[col('LINK')] = '';
         } else if (!row[col('FILE_ID')] && data.data) {
           const f = savePhotoFile(data);
-          row[col('FILE_ID')] = f.getId(); row[col('LINK')] = f.getUrl(); files++;
+          row[col('FILE_ID')] = f.getId(); row[col('LINK')] = f.getUrl(); row[col('DUNG_LUONG')] = f.getSize(); files++;
         }
         row[col('MA_DON')] = data.order || row[col('MA_DON')] || '';
         row[col('NGAY')] = data.date || row[col('NGAY')] || '';
@@ -170,4 +171,19 @@ function photo(id) {
   if (!row || !row[iF]) return { ok: true, data: null };
   const blob = DriveApp.getFileById(row[iF]).getBlob();
   return { ok: true, data: 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes()) };
+}
+
+// Dung lượng đang dùng: số ô Google Sheet (giới hạn 10 triệu ô/file), ảnh trên Drive, dung lượng tài khoản Drive
+function stats() {
+  const ss = SpreadsheetApp.getActive(); let cells = 0;
+  const sheets = ss.getSheets().map(sh => { const c = sh.getMaxRows() * sh.getMaxColumns(); cells += c; return { name: sh.getName(), rows: Math.max(0, sh.getLastRow() - 1), cells: c }; });
+  let photoCount = 0, photoBytes = 0;
+  const ph = ss.getSheetByName(PHOTO_SHEET);
+  if (ph && ph.getLastRow() > 1) {
+    const v = ph.getDataRange().getValues(), h = v[0].map(String), iF = h.indexOf('FILE_ID'), iS = h.indexOf('DUNG_LUONG');
+    for (let r = 1; r < v.length; r++) if (v[r][iF]) { photoCount++; photoBytes += Number(v[r][iS]) || 0; }
+  }
+  let used = 0, limit = 0;
+  try { used = DriveApp.getStorageUsed(); limit = DriveApp.getStorageLimit(); } catch (e) {}
+  return { ok: true, sheets, cells, cellLimit: 10000000, photoCount, photoBytes, driveUsed: used, driveLimit: limit };
 }

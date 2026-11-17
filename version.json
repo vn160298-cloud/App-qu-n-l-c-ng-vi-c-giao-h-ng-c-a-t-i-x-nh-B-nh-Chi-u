@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "date": "2026-11-17",
+  "notes": [
+    "Giao diện NutriNest Factory (Kho vận), đăng nhập ghi nhớ, xem PIN",
+    "Danh mục khách hàng, địa chỉ giao, tuyến theo tỉnh từ file Excel; nhập đơn giao theo file mẫu",
+    "Đơn giao có hạn giao, ngày tạo đơn, số thùng, kg; bỏ thu hộ và hàng hóa",
+    "Giao việc nhiều ngày, giao sớm đơn tiện đường",
+    "Bản đồ theo dõi hành trình tài xế, tổng quan theo tài xế",
+    "Quản trị: dung lượng, sao lưu, nâng cấp không mất dữ liệu"
+  ]
+}
